@@ -1,14 +1,14 @@
-# This workflow will build a Python package and publish it to PyPI and Test PyPI when a new tag is pushed.
+# This workflow will run tests on every push and publish to PyPI on every tag push
 
-name: Publish to PyPI and Test PyPI
+name: Test and Publish to PyPI and Test PyPI
 
 on:
   push:
     tags:
-      - "v*"  # Trigger only if a tag starting with "v" is pushed
+      - "v*"  # Trigger only on version tags, e.g., v1.0.0
 
 jobs:
-  publish:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,7 +18,28 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: "3.9"  # Adjust as needed
+        python-version: "3.9"  # Adjust to your required Python version
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest
+
+    - name: Run tests
+      run: pytest  # Run your test suite
+
+  publish:
+    needs: test  # Ensure this job only runs if 'test' is successful
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.9"
 
     - name: Install dependencies
       run: |
@@ -46,3 +67,4 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
         twine upload dist/*
+

@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vba_edit"                     
+version = "0.1.0"                     
+description = "Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of version control workflows)"
+authors = [
+    {name = "Markus Killer", email = "m.killer@langui.ch"}
+]
+readme = "README.md"                  
+requires-python = ">=3.9"             # Minimum Python version
+license = {file = "LICENSE"}          
+keywords = ["VBA", "Word", "PyPI"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Office/Business :: VBA",
+]
+dependencies = ["xlwings", "watchgod"]               # Required dependencies
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "flake8",
+    "pytest",
+    "pytest-cov",
+    "tox",
+    "twine",
+    "wheel",
+]
+all = [
+    
+]
+
+[package]
+include = ["vba_edit", "src", "vba_edit.*"]
+
+[project.scripts]
+word-vba = "vba_edit.word_vba:main"
+excel-vba = "vba_edit.excel_vba:main"
+#powerpoint-vba = "vba_edit:__main__.mspowerpoint"
+#access-vba = "vba_edit:__main__.msaccess"
+
+[project.urls]
+Homepage = "https://github.com/markuskiller/vba-edit"
+Documentation = "https://github.com/markuskiller/vba-edit/README.md"
+Source = "https://github.com/markuskiller/vba-edit"
+Changelog = "https://github.com/markuskiller/vba-edit/CHANGELOG.md"
+
+[tool.black]
+line-length = 120
+target-version = ['py311']  # Target Python version
