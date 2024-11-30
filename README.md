@@ -34,7 +34,8 @@ word-vba edit
 
 Updates the VBA modules of the active (or specified) MS Word document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Word into your current working directory.
 
-> [!NOTE] The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
+> [!NOTE] 
+> The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
 
 ```
 word-vba export
@@ -61,7 +62,8 @@ excel-vba edit
 
 Updates the VBA modules of the active (or specified) MS Excel document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Excel into your current working directory.
 
-> [!NOTE] The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
+> [!NOTE] 
+> The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
 
 ```
 excel-vba export
