@@ -60,4 +60,4 @@ Changelog = "https://github.com/markuskiller/vba-edit/CHANGELOG.md"
 
 [tool.black]
 line-length = 120
-target-version = ['py311']  # Target Python version
+target-version = ['py312']  # Target Python version
