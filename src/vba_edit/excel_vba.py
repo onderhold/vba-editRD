@@ -1,4 +1,3 @@
-import sys
 import argparse
 from vba_edit import __version__
 
@@ -86,7 +85,7 @@ def main():
     if USE_XLWINGS:
         xw_command = f"\n\tCommand: xlwings VBA {(args.command).upper()} {args.file or ''}"
     else:
-        xw_command = f"\n"
+        xw_command = "\n"
 
     print(f"\nInteracting with Excel VBA code using {excel_vba_processing_engine}")
 
