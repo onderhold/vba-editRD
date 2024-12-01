@@ -1,5 +1,4 @@
 # This workflow will run tests on every push and publish to PyPI on every tag push
-
 name: Test and Publish to PyPI and Test PyPI
 
 on:
@@ -8,28 +7,14 @@ on:
       - "v*"  # Trigger only on version tags, e.g., v1.0.0
 
 jobs:
+
+  lint:
+    uses: ./.github/workflows/lint.yaml
   test:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v3
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.9"  # Adjust to your required Python version
-
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-        pip install pytest
-
-    - name: Run tests
-      run: pytest  # Run your test suite
+    uses: ./.github/workflows/test.yaml
 
   publish:
-    needs: test  # Ensure this job only runs if 'test' is successful
+    needs: [lint, test]  # Ensure this job only runs if 'test' and 'lint' are successful
     runs-on: ubuntu-latest
 
     steps:
