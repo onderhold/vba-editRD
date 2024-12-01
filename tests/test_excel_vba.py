@@ -1,5 +1,5 @@
 import pytest
-#from unittest.mock import patch, MagicMock
+from unittest.mock import patch, #MagicMock
 import sys
 from vba_edit.excel_vba import vba_edit, vba_import, vba_export, main
 
