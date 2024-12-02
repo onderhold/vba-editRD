@@ -24,14 +24,168 @@ def word_vba_edit(doc_path: str) -> None:
     # Implement VBA editing logic here
 
 
-def word_vba_import(doc_path: str) -> None:
-    """Import Word VBA content.
+def word_vba_import(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
+    """Import Word VBA content from previously exported files.
 
     Args:
         doc_path: Path to the Word document
+        encoding: Encoding to use for writing VBA content. If None, encoding will be read
+                 from metadata file. Defaults to cp1252.
     """
-    print(f"Importing VBA content from {doc_path}")
-    # Implement VBA import logic here
+    print(f"Importing VBA content into {doc_path}")
+    if encoding is None:
+        print("Will use encodings from metadata file...")
+    else:
+        print(f"Using output encoding: {encoding}")
+
+    word = None
+    try:
+        # Create Word application instance
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False
+
+        # Open document
+        doc = word.Documents.Open(str(doc_path))
+
+        # Check if VBA project is accessible
+        try:
+            vba_project = doc.VBProject
+        except Exception as e:
+            raise RuntimeError(
+                "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
+                "is enabled in Word Trust Center Settings."
+            ) from e
+
+        # Find VBA directory
+        vba_dir = Path(doc_path).parent / "VBA"
+        if not vba_dir.exists():
+            raise RuntimeError(f"VBA directory not found: {vba_dir}")
+
+        # Read metadata file if it exists
+        metadata_path = vba_dir / "vba_metadata.json"
+        metadata = None
+        if metadata_path.exists():
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+        # Create mapping of extensions to component types
+        ext_to_type = {
+            ".bas": 1,  # Standard Module
+            ".cls": 2,  # Class Module
+            ".frm": 3,  # MSForm
+        }
+
+        # Get list of VBA files
+        vba_files = [f for f in vba_dir.glob("*.*") if f.suffix in ext_to_type]
+        if not vba_files:
+            print("No VBA files found to import.")
+            return
+
+        print(f"\nFound {len(vba_files)} VBA files to import:")
+        print(", ".join(f.name for f in vba_files))
+
+        components = vba_project.VBComponents
+
+        # Process each VBA file
+        for vba_file in vba_files:
+            try:
+                # Read content with UTF-8 encoding (as exported)
+                with open(vba_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Determine the output encoding
+                output_encoding = encoding
+                if output_encoding is None and metadata and "encodings" in metadata:
+                    file_info = metadata["encodings"].get(vba_file.name, {})
+                    output_encoding = file_info.get("encoding", "cp1252")
+
+                # Remove extension to get component name
+                component_name = vba_file.stem
+
+                # Special handling for ThisDocument (Document Module)
+                is_document_module = component_name == "ThisDocument"
+
+                if is_document_module:
+                    # For ThisDocument, find existing document module and update its code
+                    try:
+                        doc_component = components("ThisDocument")
+
+                        # Skip the header section (first 9 lines) for ThisDocument
+                        content_lines = content.splitlines()
+                        if len(content_lines) > 9:
+                            actual_code = "\n".join(content_lines[9:])
+                        else:
+                            actual_code = ""  # Empty if file is too short
+
+                        # Convert content to specified encoding
+                        content_bytes = actual_code.encode(output_encoding)
+
+                        # Create temporary file with proper encoding
+                        temp_file = vba_file.with_suffix(".temp")
+                        with open(temp_file, "wb") as f:
+                            f.write(content_bytes)
+
+                        # Read back the code with proper encoding
+                        with open(temp_file, "r", encoding=output_encoding) as f:
+                            new_code = f.read()
+
+                        # Update the code of the existing ThisDocument module
+                        doc_component.CodeModule.DeleteLines(1, doc_component.CodeModule.CountOfLines)
+                        if new_code.strip():  # Only add if there's actual code
+                            doc_component.CodeModule.AddFromString(new_code)
+
+                        # Remove temporary file
+                        temp_file.unlink()
+
+                    except win32com.client.pywintypes.com_error as e:
+                        print(f"Warning: Failed to update ThisDocument: {e}")
+                else:
+                    # For other components, convert content and create temp file
+                    content_bytes = content.encode(output_encoding)
+                    temp_file = vba_file.with_suffix(".temp")
+                    with open(temp_file, "wb") as f:
+                        f.write(content_bytes)
+
+                    # Remove if exists and import new
+                    try:
+                        existing = components(component_name)
+                        components.Remove(existing)
+                    except Exception as e:
+                        print(f"Warning: Failed to import {vba_file.name}: {e}")
+                        if "temp_file" in locals():
+                            try:
+                                temp_file.unlink()
+                            except (OSError, PermissionError) as e:
+                                print(f"Warning: Failed to remove temporary file: {e}")
+                        continue
+
+                    # Import the component with appropriate type
+                    components.Import(str(temp_file))
+
+                    # Remove temporary file
+                    temp_file.unlink()
+
+                print(f"Imported: {vba_file.name} (Using encoding: {output_encoding})")
+
+            except Exception as e:
+                print(f"Warning: Failed to import {vba_file.name}: {e}")
+                if "temp_file" in locals():
+                    try:
+                        temp_file.unlink()
+                    except (OSError, PermissionError) as e:
+                        print(f"Warning: Failed to remove temporary file: {e}")
+                continue
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to import VBA content: {e}")
+
+    finally:
+        if word is not None:
+            try:
+                doc.Close(SaveChanges=True)
+                word.Quit()
+            except win32com.client.pywintypes.com_error as e:
+                print(f"Warning: Failed to cleanly close Word: {e}", file=sys.stderr)
 
 
 def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
@@ -213,12 +367,18 @@ For more information, visit: https://github.com/markuskiller/vba-edit
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Word document")
     import_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
+    encoding_group = import_parser.add_mutually_exclusive_group()
+    encoding_group.add_argument(
+        "--encoding",
+        "-e",
+        help=f"Encoding to use to write VBA files back into Word document (default: {default_encoding})",
+        default=default_encoding,
+    )
+    encoding_group.add_argument("--detect-encoding", "-d", action="store_true", help="Use encodings from metadata file")
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export VBA content from Word document")
     export_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
-
-    # Export command encoding group
     encoding_group = export_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(
         "--encoding",
@@ -240,7 +400,7 @@ For more information, visit: https://github.com/markuskiller/vba-edit
         if args.command == "edit":
             word_vba_edit(doc_path)
         elif args.command == "import":
-            word_vba_import(doc_path)
+            word_vba_import(doc_path, encoding=None if args.detect_encoding else args.encoding)
         elif args.command == "export":
             word_vba_export(doc_path, encoding=None if args.detect_encoding else args.encoding)
     except Exception as e:
