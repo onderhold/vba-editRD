@@ -24,25 +24,28 @@ def word_vba_edit(doc_path: str) -> None:
     # Implement VBA editing logic here
 
 
-def word_vba_import(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
+def word_vba_import(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
     """Import Word VBA content from previously exported files.
 
     Args:
         doc_path: Path to the Word document
+        vba_dir: Directory containing VBA files to import. Defaults to current working directory.
         encoding: Encoding to use for writing VBA content. If None, encoding will be read
                  from metadata file. Defaults to cp1252.
     """
-    print(f"Importing VBA content into {doc_path}")
-    if encoding is None:
-        print("Will use encodings from metadata file...")
-    else:
-        print(f"Using output encoding: {encoding}")
+    print(f"\n\nImporting VBA content into {doc_path}")
+
+    # Use current working directory if vba_dir is not specified
+    vba_dir = Path(vba_dir) if vba_dir else Path.cwd()
+    vba_dir = vba_dir.resolve()
+    print(f"\nLooking for VBA files in: {vba_dir}")
 
     word = None
+    doc = None
     try:
         # Create Word application instance
         word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False
+        word.Visible = True  # Make Word visible
 
         # Open document
         doc = word.Documents.Open(str(doc_path))
@@ -180,19 +183,20 @@ def word_vba_import(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
         raise RuntimeError(f"Failed to import VBA content: {e}")
 
     finally:
-        if word is not None:
+        if doc is not None:
             try:
-                doc.Close(SaveChanges=True)
-                word.Quit()
+                doc.Save()  # Save changes
+                print("Document has been saved and left open for further editing.")
             except win32com.client.pywintypes.com_error as e:
-                print(f"Warning: Failed to cleanly close Word: {e}", file=sys.stderr)
+                print(f"Warning: Failed to save document: {e}", file=sys.stderr)
 
 
-def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
+def word_vba_export(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
     """Export Word VBA content.
 
     Args:
         doc_path: Path to the Word document
+        vba_dir: Directory to export VBA files to. Defaults to current working directory.
         encoding: Encoding to use for VBA files. If None, encoding will be auto-detected.
                  Defaults to cp1252.
     """
@@ -202,11 +206,17 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
     else:
         print(f"Using input encoding: {encoding}")
 
+    # Use current working directory if vba_dir is not specified
+    export_dir = Path(vba_dir) if vba_dir else Path.cwd()
+    export_dir = export_dir.resolve()
+    print(f"Exporting to directory: {export_dir}")
+
     word = None
+    doc = None
     try:
         # Create Word application instance
         word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False
+        word.Visible = True  # Make Word visible
 
         # Open document
         doc = word.Documents.Open(str(doc_path))
@@ -230,9 +240,10 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
         component_names = [component.Name for component in components]
         print(", ".join(component_names))
 
-        # Create export directory
-        export_dir = Path(doc_path).parent / "VBA"
-        export_dir.mkdir(exist_ok=True)
+        # If the export directory is not the current working directory,
+        # create it if it doesn't exist
+        if export_dir != Path.cwd():
+            export_dir.mkdir(exist_ok=True)
 
         detected_encodings = {}
 
@@ -317,12 +328,12 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
         raise RuntimeError(f"Failed to export VBA content: {e}")
 
     finally:
-        if word is not None:
+        if doc is not None:
             try:
-                doc.Close(SaveChanges=False)
-                word.Quit()
+                doc.Save()  # Save changes
+                print("Document has been saved and left open for further editing.")
             except win32com.client.pywintypes.com_error as e:
-                print(f"Warning: Failed to cleanly close Word: {e}", file=sys.stderr)
+                print(f"Warning: Failed to save document: {e}", file=sys.stderr)
 
 
 def main() -> None:
@@ -346,14 +357,10 @@ Commands:
 
 Examples:
     {entry_point_name} edit
-    {entry_point_name} import -f "C:/path/to/document.docx"
+    {entry_point_name} import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
     {entry_point_name} export --file "C:/path/to/document.docx" --encoding cp850
 
 IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
-
-Inspired by xlwings' vba functionality: https://docs.xlwings.org/en/stable/command_line.html#command-line
-
-For more information, visit: https://github.com/markuskiller/vba-edit
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -367,18 +374,24 @@ For more information, visit: https://github.com/markuskiller/vba-edit
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Word document")
     import_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
-    encoding_group = import_parser.add_mutually_exclusive_group()
-    encoding_group.add_argument(
+    import_parser.add_argument(
+        "--vba-directory",
+        help="Directory containing VBA files to be imported into Word document (optional, defaults to current directory)",
+    )
+
+    import_parser.add_argument(
         "--encoding",
         "-e",
         help=f"Encoding to use to write VBA files back into Word document (default: {default_encoding})",
         default=default_encoding,
     )
-    encoding_group.add_argument("--detect-encoding", "-d", action="store_true", help="Use encodings from metadata file")
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export VBA content from Word document")
     export_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
+    export_parser.add_argument(
+        "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
+    )
     encoding_group = export_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(
         "--encoding",
@@ -387,7 +400,10 @@ For more information, visit: https://github.com/markuskiller/vba-edit
         default=default_encoding,
     )
     encoding_group.add_argument(
-        "--detect-encoding", "-d", action="store_true", help="Auto-detect input encoding for VBA files"
+        "--detect-encoding",
+        "-d",
+        action="store_true",
+        help="Auto-detect input encoding for VBA files exported from Word",
     )
 
     args = parser.parse_args()
@@ -400,9 +416,11 @@ For more information, visit: https://github.com/markuskiller/vba-edit
         if args.command == "edit":
             word_vba_edit(doc_path)
         elif args.command == "import":
-            word_vba_import(doc_path, encoding=None if args.detect_encoding else args.encoding)
+            word_vba_import(doc_path, vba_dir=args.vba_directory, encoding=args.encoding)
         elif args.command == "export":
-            word_vba_export(doc_path, encoding=None if args.detect_encoding else args.encoding)
+            word_vba_export(
+                doc_path, vba_dir=args.vba_directory, encoding=None if args.detect_encoding else args.encoding
+            )
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
