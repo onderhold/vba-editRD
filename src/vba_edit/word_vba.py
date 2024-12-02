@@ -46,7 +46,7 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
     if encoding is None:
         print("Auto-detecting encodings for VBA files...")
     else:
-        print(f"Using encoding: {encoding}")
+        print(f"Using input encoding: {encoding}")
 
     word = None
     try:
@@ -123,7 +123,7 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
                         f"encoding {used_encoding}. Error: {e}"
                     )
 
-                with open(final_file_path, "w", encoding=used_encoding) as target:
+                with open(final_file_path, "w", encoding="utf-8") as target:
                     target.write(content)
 
                 # Remove temporary file
@@ -136,11 +136,12 @@ def word_vba_export(doc_path: str, encoding: Optional[str] = "cp1252") -> None:
 
                 if encoding is None:
                     print(
-                        f"Exported: {final_file_path} (Detected encoding: {used_encoding}, "
-                        f"confidence: {confidence:.2%})"
+                        f"Exported: {final_file_path} (Using output encoding: utf-8)"
+                        f"          (Detected input encoding: {used_encoding}, "
+                        f"           confidence: {confidence:.2%})"
                     )
                 else:
-                    print(f"Exported: {final_file_path} (Using encoding: {used_encoding})")
+                    print(f"Exported: {final_file_path} (Using output encoding: utf-8)")
 
             except Exception as e:
                 print(f"Warning: Failed to export {component.Name}: {e}")
@@ -222,11 +223,11 @@ For more information, visit: https://github.com/markuskiller/vba-edit
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to use for VBA files (default: {default_encoding})",
+        help=f"Encoding to use to read VBA files (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
-        "--detect-encoding", "-d", action="store_true", help="Auto-detect encoding for VBA files"
+        "--detect-encoding", "-d", action="store_true", help="Auto-detect input encoding for VBA files"
     )
 
     args = parser.parse_args()
