@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import datetime
 import json
 import sys
@@ -6,22 +7,59 @@ from pathlib import Path
 from typing import Optional
 
 import win32com.client
+from watchgod import awatch
 
 from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
-from vba_edit.utils import detect_vba_encoding, get_document_path, get_windows_ansi_codepage
+from vba_edit.utils import VBAFileChangeHandler, detect_vba_encoding, get_document_path, get_windows_ansi_codepage
 
 package_name = package_name.replace("_", "-")
 
 
-def word_vba_edit(doc_path: str) -> None:
-    """Edit Word VBA content.
+async def watch_vba_files(doc_path: str, vba_dir: Path, encoding: Optional[str] = "cp1252") -> None:
+    """Watch VBA files for changes using watchgod.
 
     Args:
         doc_path: Path to the Word document
+        vba_dir: Directory containing VBA files to watch
+        encoding: Encoding to use for writing VBA content back to Word document
     """
-    print(f"Editing VBA content in {doc_path}")
-    # Implement VBA editing logic here
+    handler = VBAFileChangeHandler(doc_path, str(vba_dir), encoding)
+
+    async for changes in awatch(str(vba_dir)):
+        handler.handle_changes(changes)
+
+
+def word_vba_edit(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
+    """Edit Word VBA content interactively.
+
+    Exports VBA content to the specified directory and watches for changes,
+    automatically reimporting modified files back into the Word document.
+
+    Args:
+        doc_path: Path to the Word document
+        vba_dir: Directory to export/watch VBA files. Defaults to current working directory.
+        encoding: Encoding to use for VBA files. If None, encoding will be auto-detected.
+                 Defaults to cp1252.
+    """
+    print(f"Starting interactive VBA editing for {doc_path}")
+
+    # Use current working directory if vba_dir is not specified
+    vba_dir = Path(vba_dir) if vba_dir else Path.cwd()
+    vba_dir = vba_dir.resolve()
+
+    # First export all VBA content
+    word_vba_export(doc_path, vba_dir=str(vba_dir), encoding=encoding)
+
+    try:
+        print("\nWaiting for changes... (Press Ctrl+C to stop)")
+        # Run the async watch function in the event loop
+        asyncio.run(watch_vba_files(doc_path, vba_dir, encoding))
+
+    except KeyboardInterrupt:
+        print("\nStopping VBA editor...")
+    finally:
+        print("VBA editor stopped. Your changes have been saved.")
 
 
 def word_vba_import(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
@@ -370,6 +408,22 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     # Edit command
     edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Word document")
     edit_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
+    edit_parser.add_argument(
+        "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
+    )
+    encoding_group = edit_parser.add_mutually_exclusive_group()
+    encoding_group.add_argument(
+        "--encoding",
+        "-e",
+        help=f"Encoding to use to read VBA files from Word document (default: {default_encoding})",
+        default=default_encoding,
+    )
+    encoding_group.add_argument(
+        "--detect-encoding",
+        "-d",
+        action="store_true",
+        help="Auto-detect input encoding for VBA files exported from Worddocument",
+    )
 
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Word document")
@@ -396,14 +450,14 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to use to read VBA files (default: {default_encoding})",
+        help=f"Encoding to use to read VBA files from Word document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files exported from Word",
+        help="Auto-detect input encoding for VBA files exported from Word document",
     )
 
     args = parser.parse_args()
@@ -414,7 +468,9 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
 
         # Pass the resolved path to functions
         if args.command == "edit":
-            word_vba_edit(doc_path)
+            word_vba_edit(
+                doc_path, vba_dir=args.vba_directory, encoding=None if args.detect_encoding else args.encoding
+            )
         elif args.command == "import":
             word_vba_import(doc_path, vba_dir=args.vba_directory, encoding=args.encoding)
         elif args.command == "export":
