@@ -1,6 +1,12 @@
 # vba-edit
  Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of version control workflows)
 
+[![CI](https://github.com/markuskiller/vba-edit/workflows/test.yaml/badge.svg?branch=dev)](https://github.com/markuskiller/vba-edit/)
+[![PyPI - Version](https://img.shields.io/pypi/v/vba-edit.svg)](https://pypi.org/project/vba-edit)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vba-edit.svg)](https://pypi.org/project/vba-edit)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/vba-edit.svg)](https://pypi.org/project/vba-edit)
+[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+
 > [!NOTE] 
 > This project is heavily inspired by code from ``xlwings vba edit``, actively maintained and developed by the [xlwings-Project](https://www.xlwings.org/) under the BSD 3-Clause License. We use the name ``xlwings`` solely to give credit to the orginal author and to refer to existing video tutorials on the subject of vba editing. This does not imply endorsement or sponsorship by the original authors or contributors.
 

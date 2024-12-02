@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD 3-Clause License",
     "Operating System :: Microsoft :: Windows",
     "Topic :: Office/Business :: VBA",
 ]
@@ -32,10 +32,10 @@ dependencies = ["xlwings", "watchgod"]               # Required dependencies
 [project.optional-dependencies]
 dev = [
     "black",
-    "flake8",
+    "bumpver",
+    "ruff",
     "pytest",
     "pytest-cov",
-    "tox",
     "twine",
     "wheel",
 ]
@@ -47,7 +47,7 @@ all = [
 include = ["vba_edit", "src", "vba_edit.*"]
 
 [project.scripts]
-word-vba = "vba_edit.word_vba:main"
+word-vba =  "vba_edit.word_vba:main"
 excel-vba = "vba_edit.excel_vba:main"
 #powerpoint-vba = "vba_edit:__main__.mspowerpoint"
 #access-vba = "vba_edit:__main__.msaccess"
@@ -61,3 +61,33 @@ Changelog = "https://github.com/markuskiller/vba-edit/CHANGELOG.md"
 [tool.black]
 line-length = 120
 target-version = ['py312']  # Target Python version
+
+[tool.ruff]
+line-length = 120
+target-version = 'py312'
+fix = true
+show-fixes = true
+respect-gitignore = true
+src = ["src", "vba_edit", "tests"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+src_paths = ["src", "vba_edit", "tests"]
+
+[tool.bumpver]
+current_version = "0.1.0"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit_message  = "bump version {old_version} -> {new_version}"
+commit          = true
+tag             = false
+push            = false
+
+[tool.bumpver.file_patterns]
+    "pyproject.toml" = [
+        'current_version = "{version}"',
+        'version = "{version}"',
+    ]
+    "src/vba_edit/__init__.py" = ["{version}"]
+    "setup.cfg" = ['version = {version}']
+    
