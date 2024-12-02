@@ -3,10 +3,10 @@ import sys
 from typing import Optional
 import win32com.client
 from pathlib import Path
+from vba_edit import __version__ as package_version
+from vba_edit import __name__ as package_name
 
-__version__ = "0.1.0"
-__name__ = "word-vba"
-
+package_name = package_name.replace("_", "-")
 
 def get_active_word_document() -> str:
     """Get the path of the currently active Word document.
@@ -84,10 +84,11 @@ def word_vba_export(doc_path: str) -> None:
 
 def main() -> None:
     """Main entry point for the word-vba CLI."""
+    entry_point_name = __name__.split(".")[-1].replace("_", "-")
     parser = argparse.ArgumentParser(
-        prog=__name__,
+        prog=entry_point_name,
         description=f"""
-{__name__} v{__version__}
+{package_name} v{package_version} ({entry_point_name})
 
 A command-line tool for managing VBA content in Word documents.
 This tool allows you to edit, import, and export VBA content from Word documents.
@@ -99,9 +100,9 @@ Commands:
     export  Export VBA content from Word document
 
 Examples:
-    {__name__} edit
-    {__name__} import -f "C:/path/to/document.docx"
-    {__name__} export
+    {entry_point_name} edit
+    {entry_point_name} import -f "C:/path/to/document.docx"
+    {entry_point_name} export
 
 IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
 

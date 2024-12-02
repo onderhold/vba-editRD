@@ -90,7 +90,7 @@ Overwrites the VBA modules in the active (or specified) Excel document with thei
 > Requires "Trust access to the VBA project object model" enabled.
 
 > [!TIP]
-> Watch the excellent [``xlwings vba edit`` walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit`` command calls ``xlwings vba edit`` if the optional dependency ``xlwings`` is installed and provides a rudimentary fallback, in case it is not installed. If you often work with Excel-VBA-Code, make sure that [``xlwings``](https://www.xlwings.org/) is installed:
+> Watch the excellent [``xlwings vba edit`` walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings`` is installed and provides a rudimentary fallback, in case it is not installed. If you often work with Excel-VBA-Code, make sure that [``xlwings``](https://www.xlwings.org/) is installed:
 >
 > ```sh
 > pip install xlwings
