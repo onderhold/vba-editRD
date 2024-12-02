@@ -8,6 +8,7 @@ from vba_edit import __name__ as package_name
 
 package_name = package_name.replace("_", "-")
 
+
 def get_active_word_document() -> str:
     """Get the path of the currently active Word document.
 

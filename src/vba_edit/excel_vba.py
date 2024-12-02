@@ -4,6 +4,7 @@ from vba_edit import __name__ as package_name
 
 package_name = package_name.replace("_", "-")
 
+
 def vba_edit(file: str = None) -> None:
     """Edit Excel VBA code.
 
@@ -65,11 +66,11 @@ def main():
         export_function = vba_export
 
     """Main entry point for the excel-vba CLI."""
-    
+
     # Implement the CLI logic here
     parser = argparse.ArgumentParser(
-    prog=entry_point_name,
-    description=f"""
+        prog=entry_point_name,
+        description=f"""
 {package_name} v{package_version} ({entry_point_name})
 
 A command-line tool for managing VBA content in Excel documents.
