@@ -1,22 +1,27 @@
 import argparse
-import asyncio
 import datetime
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 import win32com.client
-from watchgod import awatch
+from watchgod import Change, RegExpWatcher, watch  # Add these explicitly
 
 from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
-from vba_edit.utils import VBAFileChangeHandler, detect_vba_encoding, get_document_path, get_windows_ansi_codepage
+from vba_edit.utils import (
+    VBAFileChangeHandler,
+    detect_vba_encoding,
+    get_document_path,
+    get_windows_ansi_codepage,
+)
 
 package_name = package_name.replace("_", "-")
 
 
-async def watch_vba_files(doc_path: str, vba_dir: Path, encoding: Optional[str] = "cp1252") -> None:
+def watch_vba_files(doc_path: str, vba_dir: Path, encoding: Optional[str] = "cp1252") -> None:
     """Watch VBA files for changes using watchgod.
 
     Args:
@@ -26,8 +31,21 @@ async def watch_vba_files(doc_path: str, vba_dir: Path, encoding: Optional[str] 
     """
     handler = VBAFileChangeHandler(doc_path, str(vba_dir), encoding)
 
-    async for changes in awatch(str(vba_dir)):
-        handler.handle_changes(changes)
+    print(f"Watching for changes in {vba_dir}...(Hit Ctrl-C to stop)")
+
+    # Use run_process instead of async/await
+    for changes in watch(
+        vba_dir,
+        watcher_cls=RegExpWatcher,
+        watcher_kwargs=dict(re_files=r"^.*(\.cls|\.frm|\.bas)$"),
+        normal_sleep=400,  # Check every 400ms
+    ):
+        for change_type, path in changes:
+            if change_type == Change.modified:
+                try:
+                    handler.import_changed_file(Path(path))
+                except Exception as e:
+                    print(f"Error handling changes: {e}")
 
 
 def word_vba_edit(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
@@ -53,9 +71,8 @@ def word_vba_edit(doc_path: str, vba_dir: Optional[str] = None, encoding: Option
 
     try:
         print("\nWaiting for changes... (Press Ctrl+C to stop)")
-        # Run the async watch function in the event loop
-        asyncio.run(watch_vba_files(doc_path, vba_dir, encoding))
-
+        # Run the watch function directly instead of using asyncio
+        watch_vba_files(doc_path, vba_dir, encoding)
     except KeyboardInterrupt:
         print("\nStopping VBA editor...")
     finally:
@@ -77,6 +94,12 @@ def word_vba_import(doc_path: str, vba_dir: Optional[str] = None, encoding: Opti
     vba_dir = Path(vba_dir) if vba_dir else Path.cwd()
     vba_dir = vba_dir.resolve()
     print(f"\nLooking for VBA files in: {vba_dir}")
+    # Find VBA directory
+    if vba_dir.exists():
+        print(f"\nLooking for VBA files in: {vba_dir}")
+    else:
+        raise RuntimeError(f"VBA directory not found: {vba_dir}")
+        sys.exit(1)
 
     word = None
     doc = None
@@ -96,11 +119,6 @@ def word_vba_import(doc_path: str, vba_dir: Optional[str] = None, encoding: Opti
                 "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
                 "is enabled in Word Trust Center Settings."
             ) from e
-
-        # Find VBA directory
-        vba_dir = Path(doc_path).parent / "VBA"
-        if not vba_dir.exists():
-            raise RuntimeError(f"VBA directory not found: {vba_dir}")
 
         # Read metadata file if it exists
         metadata_path = vba_dir / "vba_metadata.json"
@@ -229,7 +247,12 @@ def word_vba_import(doc_path: str, vba_dir: Optional[str] = None, encoding: Opti
                 print(f"Warning: Failed to save document: {e}", file=sys.stderr)
 
 
-def word_vba_export(doc_path: str, vba_dir: Optional[str] = None, encoding: Optional[str] = "cp1252") -> None:
+def word_vba_export(
+    doc_path: str,
+    vba_dir: Optional[str] = None,
+    encoding: Optional[str] = "cp1252",
+    save_metadata: Optional[bool] = False,
+) -> None:
     """Export Word VBA content.
 
     Args:
@@ -350,17 +373,24 @@ def word_vba_export(doc_path: str, vba_dir: Optional[str] = None, encoding: Opti
                 print(f"Warning: Failed to export {component.Name}: {e}")
                 continue
 
-        # Store metadata including encoding information
-        metadata_path = export_dir / "vba_metadata.json"
-        metadata = {
-            "source_document": str(doc_path),
-            "export_date": datetime.datetime.now().isoformat(),
-            "encoding_mode": "auto-detect" if encoding is None else "fixed",
-            "encodings": detected_encodings,
-        }
+        if save_metadata:
+            # Store metadata including encoding information
+            metadata_path = export_dir / "vba_metadata.json"
+            metadata = {
+                "source_document": str(doc_path),
+                "export_date": datetime.datetime.now().isoformat(),
+                "encoding_mode": "auto-detect" if encoding is None else "fixed",
+                "encodings": detected_encodings,
+            }
 
-        with open(metadata_path, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2)
+
+            print(f"metadata .json file saved to {metadata_path}")
+
+        # Open the export directory
+        print(f"Exported VBA files to: {export_dir}")
+        os.startfile(export_dir)
 
     except Exception as e:
         raise RuntimeError(f"Failed to export VBA content: {e}")
@@ -396,7 +426,7 @@ Commands:
 Examples:
     {entry_point_name} edit
     {entry_point_name} import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
-    {entry_point_name} export --file "C:/path/to/document.docx" --encoding cp850
+    {entry_point_name} export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
 
 IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
 """,
@@ -445,6 +475,12 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     export_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
     export_parser.add_argument(
         "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
+    )
+    export_parser.add_argument(
+        "--save-metadata",
+        "-m",
+        action="store_true",
+        help="Save metadata file with character encoding information (default: False)",
     )
     encoding_group = export_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(

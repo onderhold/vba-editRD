@@ -1,10 +1,9 @@
 import ctypes
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Tuple
-
-import chardet
+from typing import Optional, Tuple
 import win32com.client
-from watchgod import Change
+import chardet
+from watchgod import Change, RegExpWatcher, watch  # noqa: F401
 
 
 class VBAFileChangeHandler:
@@ -14,138 +13,91 @@ class VBAFileChangeHandler:
         self.doc_path = doc_path
         self.vba_dir = Path(vba_dir)
         self.encoding = encoding
-        self.last_modified_times: Dict[str, float] = {}
         self.word = None
         self.doc = None
 
-    def _ensure_word_connection(self) -> Tuple[Any, Any]:
-        """Ensure connection to Word and document"""
-        if self.word is None:
-            self.word = win32com.client.Dispatch("Word.Application")
-            self.word.Visible = True
-            self.doc = self.word.Documents.Open(str(self.doc_path))
-        return self.word, self.doc
-
-    def _cleanup_word_connection(self) -> None:
-        """Clean up Word connection if exists"""
-        if self.doc is not None:
-            try:
-                self.doc.Save()
-            except Exception as e:
-                print(f"Warning: Failed to save document: {e}")
-            self.doc = None
-        if self.word is not None:
-            try:
-                self.word.Quit()
-            except Exception:
-                pass
-            self.word = None
-
-    def handle_changes(self, changes: Set[Tuple[Change, Path]]) -> None:
-        """Handle file changes detected by watchgod.
-
-        Args:
-            changes: Set of (Change, Path) tuples from watchgod
-        """
+    def import_changed_file(self, file_path: Path) -> None:
+        """Import a single VBA file that has changed."""
         try:
-            changed_files = []
+            if self.word is None:
+                self.word = win32com.client.Dispatch("Word.Application")
+                self.word.Visible = True
+                self.doc = self.word.Documents.Open(str(self.doc_path))
 
-            # First collect all valid changes
-            for change_type, file_path in changes:
-                if (
-                    change_type == Change.modified
-                    and isinstance(file_path, Path)
-                    and file_path.suffix in {".bas", ".cls", ".frm"}
-                ):
-                    current_time = file_path.stat().st_mtime
-                    last_time = self.last_modified_times.get(str(file_path))
+            try:
+                vba_project = self.doc.VBProject
+            except Exception as e:
+                raise RuntimeError(
+                    "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
+                    "is enabled in Word Trust Center Settings."
+                ) from e
 
-                    # Skip if this modification was too recent (debounce)
-                    if last_time and current_time - last_time < 1.0:
-                        continue
+            print(f"\nProcessing changes in {file_path.name}")
 
-                    self.last_modified_times[str(file_path)] = current_time
-                    changed_files.append(file_path)
+            # Read content with UTF-8 encoding (as exported)
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
 
-            if changed_files:
-                # Process each changed file
-                word, doc = self._ensure_word_connection()
+            components = vba_project.VBComponents
+            component_name = file_path.stem
+
+            if component_name == "ThisDocument":
+                # Handle ThisDocument specially
+                doc_component = components("ThisDocument")
+
+                # Skip header section for ThisDocument
+                content_lines = content.splitlines()
+                if len(content_lines) > 9:
+                    actual_code = "\n".join(content_lines[9:])
+                else:
+                    actual_code = ""
+
+                # Convert content to specified encoding
+                content_bytes = actual_code.encode(self.encoding)
+                temp_file = file_path.with_suffix(".temp")
+
                 try:
-                    vba_project = doc.VBProject
-                except Exception as e:
-                    raise RuntimeError(
-                        "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
-                        "is enabled in Word Trust Center Settings."
-                    ) from e
+                    with open(temp_file, "wb") as f:
+                        f.write(content_bytes)
 
-                components = vba_project.VBComponents
+                    # Read back with proper encoding
+                    with open(temp_file, "r", encoding=self.encoding) as f:
+                        new_code = f.read()
 
-                for file_path in changed_files:
-                    print(f"\nProcessing changes in {file_path.name}")
-                    try:
-                        # Read content with UTF-8 encoding (as exported)
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            content = f.read()
-
-                        component_name = file_path.stem
-                        temp_file = file_path.with_suffix(".temp")
-
-                        if component_name == "ThisDocument":
-                            # Handle ThisDocument specially
-                            doc_component = components("ThisDocument")
-
-                            # Skip header section for ThisDocument
-                            content_lines = content.splitlines()
-                            if len(content_lines) > 9:
-                                content = "\n".join(content_lines[9:])
-
-                            # Write temp file with correct encoding
-                            content_bytes = content.encode(self.encoding)
-                            with open(temp_file, "wb") as f:
-                                f.write(content_bytes)
-
-                            # Read back and update
-                            with open(temp_file, "r", encoding=self.encoding) as f:
-                                new_code = f.read()
-
-                            if new_code.strip():
-                                doc_component.CodeModule.DeleteLines(1, doc_component.CodeModule.CountOfLines)
-                                doc_component.CodeModule.AddFromString(new_code)
-                        else:
-                            # Handle regular components
-                            content_bytes = content.encode(self.encoding)
-                            with open(temp_file, "wb") as f:
-                                f.write(content_bytes)
-
-                            # Remove if exists
-                            try:
-                                existing = components(component_name)
-                                components.Remove(existing)
-                            except win32com.client.pywintypes.com_error:
-                                pass
-
-                            # Import new version
-                            components.Import(str(temp_file))
-
+                    # Update existing ThisDocument module
+                    doc_component.CodeModule.DeleteLines(1, doc_component.CodeModule.CountOfLines)
+                    if new_code.strip():
+                        doc_component.CodeModule.AddFromString(new_code)
+                finally:
+                    if temp_file.exists():
                         temp_file.unlink()
-                        print(f"Successfully reimported: {file_path.name}")
+            else:
+                # Handle regular components
+                content_bytes = content.encode(self.encoding)
+                temp_file = file_path.with_suffix(".temp")
 
-                    except Exception as e:
-                        print(f"Failed to process {file_path.name}: {e}")
-                        if "temp_file" in locals():
-                            try:
-                                temp_file.unlink()
-                            except (OSError, PermissionError):
-                                pass
-                        continue
+                try:
+                    with open(temp_file, "wb") as f:
+                        f.write(content_bytes)
 
-                # Save after processing all files
-                doc.Save()
-                print("\nChanges saved. Waiting for more changes...")
+                    # Remove existing component if it exists
+                    try:
+                        existing = components(component_name)
+                        components.Remove(existing)
+                    except win32com.client.pywintypes.com_error:
+                        pass  # Component doesn't exist yet
+
+                    # Import the component
+                    components.Import(str(temp_file))
+                finally:
+                    if temp_file.exists():
+                        temp_file.unlink()
+
+            print(f"Successfully reimported: {file_path.name}")
+            self.doc.Save()
 
         except Exception as e:
-            print(f"Error handling changes: {e}")
-            self._cleanup_word_connection()
+            print(f"Failed to process {file_path.name}: {e}")
 
 
 def get_active_office_document(app_type: str) -> str:
