@@ -1,9 +1,29 @@
 import ctypes
+import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 import win32com.client
 import chardet
 from watchgod import Change, RegExpWatcher, watch  # noqa: F401
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+class OfficeError(Exception):
+    """Base exception class for Office-related errors."""
+    pass
+
+class DocumentNotFoundError(OfficeError):
+    """Exception raised when document cannot be found."""
+    pass
+
+class ApplicationError(OfficeError):
+    """Exception raised when there are issues with Office applications."""
+    pass
+
+class EncodingError(OfficeError):
+    """Exception raised when there are encoding-related issues."""
+    pass
 
 
 class VBAFileChangeHandler:
