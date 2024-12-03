@@ -35,14 +35,60 @@ uv pip install vba-edit
 
 #### Working with MS Word VBA code
 
+```
+usage: word-vba [-h] {edit,import,export} ...
+
+vba-edit v0.1.0 (word-vba)
+
+A command-line tool for managing VBA content in Word documents.
+This tool allows you to edit, import, and export VBA content from Word documents.
+If no file is specified, the tool will attempt to use the currently active Word document.
+
+Commands:
+    edit    Edit VBA content in Word document
+    import  Import VBA content into Word document
+    export  Export VBA content from Word document
+
+Examples:
+    word-vba edit
+    word-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
+    word-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+
+IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
+
+positional arguments:
+  {edit,import,export}
+    edit                Edit VBA content in Word document
+    import              Import VBA content into Word document
+    export              Export VBA content from Word document
+
+options:
+  -h, --help            show this help message and exit
+```
+##### EDIT
+
 ```sh
 word-vba edit
 ```
 
 Updates the VBA modules of the active (or specified) MS Word document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Word into your current working directory.
 
-> [!NOTE] 
-> The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
+```
+usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --encoding ENCODING, -e ENCODING
+                        Encoding to be used when reading VBA files from Word document (default: cp1252)
+  --detect-encoding, -d
+                        Auto-detect input encoding for VBA files exported from Word document
+  --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
+  --vba-directory VBA_DIRECTORY
+                        Directory to export VBA files to (optional, defaults to current directory)
+  --verbose, -v         Enable verbose logging output
+```
+
+##### EXPORT
 
 ```
 word-vba export
@@ -50,10 +96,42 @@ word-vba export
 Overwrites the local version of the modules with those from the active (or specified) Word document.
 
 ```
+usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --save-metadata, -m   Save metadata file with character encoding information (default: False)
+  --encoding ENCODING, -e ENCODING
+                        Encoding to be used when reading VBA files from Word document (default: cp1252)
+  --detect-encoding, -d
+                        Auto-detect input encoding for VBA files exported from Word document
+  --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
+  --vba-directory VBA_DIRECTORY
+                        Directory to export VBA files to (optional, defaults to current directory)
+  --verbose, -v         Enable verbose logging output
+```
+
+##### IMPORT
+
+```
 word-vba import
 ```
 
 Overwrites the VBA modules in the active (or specified) Word document with their local versions.
+
+```
+usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --encoding ENCODING, -e ENCODING
+                        Encoding to be used when writing VBA files back into Word document (default: cp1252)
+  --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
+  --vba-directory VBA_DIRECTORY
+                        Directory to export VBA files to (optional, defaults to current directory)
+  --verbose, -v         Enable verbose logging output
+```
+
 
 > [!NOTE]  
 > Whenever you change something in the VBA editor (such as the layout of a form or the properties of a module), you have to run ``word-vba export``.

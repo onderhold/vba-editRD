@@ -68,7 +68,7 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to use to read VBA files from Word document (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from Word document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
@@ -83,7 +83,7 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     import_parser.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to use to write VBA files back into Word document (default: {default_encoding})",
+        help=f"Encoding to be used when writing VBA files back into Word document (default: {default_encoding})",
         default=default_encoding,
     )
 
@@ -99,7 +99,7 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to use to read VBA files from Word document (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from Word document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
