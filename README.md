@@ -74,7 +74,9 @@ word-vba edit
 Updates the VBA modules of the active (or specified) MS Word document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Word into your current working directory.
 
 ```
-usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding] 
+                     [--file FILE] [--vba-directory VBA_DIRECTORY] 
+                     [--verbose]
 
 options:
   -h, --help            show this help message and exit
@@ -96,7 +98,8 @@ word-vba export
 Overwrites the local version of the modules with those from the active (or specified) Word document.
 
 ```
-usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
+                       [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
 
 options:
   -h, --help            show this help message and exit
@@ -120,7 +123,8 @@ word-vba import
 Overwrites the VBA modules in the active (or specified) Word document with their local versions.
 
 ```
-usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] 
+                       [--vba-directory VBA_DIRECTORY] [--verbose]
 
 options:
   -h, --help            show this help message and exit
