@@ -1,10 +1,21 @@
 import argparse
+import logging
 import sys
+from pathlib import Path
 
 from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
-from vba_edit.utils import get_document_path, get_windows_ansi_codepage
-from vba_edit.office_vba import WordVBAHandler
+from vba_edit.utils import setup_logging, get_document_path, get_windows_ansi_codepage
+from vba_edit.office_vba import (
+    WordVBAHandler,
+    VBAError,
+    VBAAccessError,
+    DocumentClosedError,
+    RPCError,
+)
+
+# Configure module logger
+logger = logging.getLogger(__name__)
 
 
 def create_cli_parser() -> argparse.ArgumentParser:
@@ -41,12 +52,18 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # Create parsers for each command with common arguments
+    common_args = {
+        "file": (["--file", "-f"], {"help": "Path to Word document (optional, defaults to active document)"}),
+        "vba_directory": (
+            ["--vba-directory"],
+            {"help": "Directory to export VBA files to (optional, defaults to current directory)"},
+        ),
+        "verbose": (["--verbose", "-v"], {"action": "store_true", "help": "Enable verbose logging output"}),
+    }
+
     # Edit command
     edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Word document")
-    edit_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
-    edit_parser.add_argument(
-        "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
-    )
     encoding_group = edit_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(
         "--encoding",
@@ -63,11 +80,6 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
 
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Word document")
-    import_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
-    import_parser.add_argument(
-        "--vba-directory",
-        help="Directory containing VBA files to be imported into Word document (optional, defaults to current directory)",
-    )
     import_parser.add_argument(
         "--encoding",
         "-e",
@@ -77,10 +89,6 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export VBA content from Word document")
-    export_parser.add_argument("--file", "-f", help="Path to Word document (optional, defaults to active document)")
-    export_parser.add_argument(
-        "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
-    )
     export_parser.add_argument(
         "--save-metadata",
         "-m",
@@ -101,40 +109,118 @@ IMPORTANT: This tool requires "Trust access to the VBA project object model" ena
         help="Auto-detect input encoding for VBA files exported from Word document",
     )
 
+    # Add common arguments to all subparsers
+    subparser_list = [edit_parser, import_parser, export_parser]
+    for subparser in subparser_list:
+        for arg_name, (arg_flags, arg_kwargs) in common_args.items():
+            subparser.add_argument(*arg_flags, **arg_kwargs)
+
     return parser
+
+
+def validate_paths(args: argparse.Namespace) -> None:
+    """Validate file and directory paths from command line arguments."""
+    if args.file and not Path(args.file).exists():
+        raise FileNotFoundError(f"Document not found: {args.file}")
+
+    if args.vba_directory:
+        vba_dir = Path(args.vba_directory)
+        if not vba_dir.exists():
+            logger.info(f"Creating VBA directory: {vba_dir}")
+            vba_dir.mkdir(parents=True, exist_ok=True)
 
 
 def handle_word_vba_command(args: argparse.Namespace) -> None:
     """Handle the word-vba command execution."""
     try:
+        # Initialize logging
+        setup_logging(verbose=getattr(args, "verbose", False))
+        logger.debug(f"Starting word-vba command: {args.command}")
+        logger.debug(f"Command arguments: {vars(args)}")
+
+        # Validate paths
+        try:
+            validate_paths(args)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            sys.exit(1)
+
         # Get document path
-        doc_path = get_document_path(file_path=args.file, app_type="word")
+        try:
+            doc_path = get_document_path(file_path=args.file, app_type="word")
+            logger.info(f"Using document: {doc_path}")
+        except Exception as e:
+            logger.error(f"Failed to get document path: {str(e)}")
+            sys.exit(1)
 
         # Determine encoding
         encoding = None if getattr(args, "detect_encoding", False) else args.encoding
+        logger.debug(f"Using encoding: {encoding or 'auto-detect'}")
 
         # Create handler instance
-        handler = WordVBAHandler(doc_path=doc_path, vba_dir=args.vba_directory, encoding=encoding)
+        try:
+            handler = WordVBAHandler(
+                doc_path=doc_path,
+                vba_dir=args.vba_directory,
+                encoding=encoding,
+                verbose=getattr(args, "verbose", False),
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize Word VBA handler: {str(e)}")
+            sys.exit(1)
 
         # Execute requested command
-        if args.command == "edit":
-            handler.export_vba()  # First export all content
-            handler.watch_changes()  # Then watch for changes
-        elif args.command == "import":
-            handler.import_vba()
-        elif args.command == "export":
-            handler.export_vba(save_metadata=getattr(args, "save_metadata", False))
+        logger.info(f"Executing command: {args.command}")
+        try:
+            if args.command == "edit":
+                handler.export_vba()
+                try:
+                    handler.watch_changes()
+                except (DocumentClosedError, RPCError) as e:
+                    logger.error(str(e))
+                    logger.info("Edit session terminated. Please restart Word and the tool to continue editing.")
+                    sys.exit(1)
+            elif args.command == "import":
+                handler.import_vba()
+            elif args.command == "export":
+                handler.export_vba(save_metadata=getattr(args, "save_metadata", False))
+        except (DocumentClosedError, RPCError) as e:
+            logger.error(str(e))
+            sys.exit(1)
+        except VBAAccessError as e:
+            logger.error(str(e))
+            logger.error("Please check Word Trust Center Settings and try again.")
+            sys.exit(1)
+        except VBAError as e:
+            logger.error(f"VBA operation failed: {str(e)}")
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Unexpected error: {str(e)}")
+            if getattr(args, "verbose", False):
+                logger.exception("Detailed error information:")
+            sys.exit(1)
 
+    except KeyboardInterrupt:
+        logger.info("\nOperation interrupted by user")
+        sys.exit(0)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Critical error: {str(e)}")
+        if getattr(args, "verbose", False):
+            logger.exception("Detailed error information:")
         sys.exit(1)
+    finally:
+        logger.debug("Command execution completed")
 
 
 def main() -> None:
     """Main entry point for the word-vba CLI."""
-    parser = create_cli_parser()
-    args = parser.parse_args()
-    handle_word_vba_command(args)
+    try:
+        parser = create_cli_parser()
+        args = parser.parse_args()
+        handle_word_vba_command(args)
+    except Exception as e:
+        print(f"Critical error: {str(e)}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
