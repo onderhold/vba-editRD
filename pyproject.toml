@@ -25,7 +25,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
     "License :: OSI Approved :: BSD License",
     "Operating System :: Microsoft :: Windows",
-    "Topic :: Office/Business :: VBA",
+    "Topic :: Office/Business :: Office Suites",
 ]
 dependencies = ["xlwings", "watchgod"]               # Required dependencies
 
