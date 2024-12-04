@@ -60,20 +60,22 @@ Commands:
     import  Import VBA content into Office document
     export  Export VBA content from Office document
 
-Examples:
+Examples :                          
     word-vba  edit   <--- uses active Word document and current directory for exported 
                           VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
                           active Word document
+    
+
+    Options implemented for word-vba:                         {excel-vba planned in v0.2.0}
 
     word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
-    excel-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    word-vba  export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
 
 positional arguments:
   {edit,import,export}
     edit                Edit VBA content in Office document
     import              Import VBA content into Office document
-    export              Export VBA content from Office
-    document
+    export              Export VBA content from Office document
 
 options:
   -h, --help            Show this help message and exit
