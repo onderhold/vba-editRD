@@ -20,9 +20,9 @@
 ## Links
 
 - [Homepage](https://langui.ch/current-projects/vba-edit/)
-- [Documentation](https://raw.githubusercontent.com/markuskiller/vba-edit/dev/README.md)
+- [Documentation](https://github.com/markuskiller/vba-edit/blob/dev/README.md)
 - [Source](https://github.com/markuskiller/vba-edit)
-- [Changelog](https://raw.githubusercontent.com/markuskiller/vba-edit/dev/CHANGELOG.md)
+- [Changelog](https://github.com/markuskiller/vba-edit/blob/dev/CHANGELOG.md)
 
 ## Quickstart
 
