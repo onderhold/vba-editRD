@@ -68,16 +68,6 @@ Examples:
     word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
     excel-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
 
-IMPORTANT: 
-           [!] It's early days. Use with care and backup your imortant macro-enabled
-               MS Office documents before using them with this tool!
-
-               First tests have been very promissing. Feedback appreciated via
-               github issues. 
-
-           [!] This tool requires "Trust access to the VBA project object model" 
-               enabled in MS Office Application.
-
 positional arguments:
   {edit,import,export}
     edit                Edit VBA content in Office document
