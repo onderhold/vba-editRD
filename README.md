@@ -17,6 +17,13 @@
 > First tests have been very promissing. Feedback appreciated via
 > github issues.
 
+## Links
+
+- [Homepage](https://langui.ch/current-projects/vba-edit/)
+- [Documentation](https://github.com/markuskiller/vba-edit/README.md)
+- [Source](https://github.com/markuskiller/vba-edit)
+- [Changelog](https://github.com/markuskiller/vba-edit/CHANGELOG.md)
+
 ## Quickstart
 
 ### Installation
