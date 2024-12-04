@@ -9,7 +9,7 @@ description = "Enable seamless MS Office VBA code editing in preferred editor or
 authors = [
     {name = "Markus Killer", email = "m.killer@langui.ch"}
 ]
-readme = "README.md"                  
+readme = "README.rst"                  
 requires-python = ">=3.9"             # Minimum Python version
 license = {file = "LICENSE"}          
 keywords = ["VBA", "Word", "PyPI"]
