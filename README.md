@@ -1,5 +1,5 @@
 # vba-edit
- Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of version control workflows)
+ Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of coding assistants and version control workflows)
 
 [![CI](https://github.com/markuskiller/vba-edit/workflows/test.yaml/badge.svg?branch=dev)](https://github.com/markuskiller/vba-edit/)
 [![PyPI - Version](https://img.shields.io/pypi/v/vba-edit.svg)](https://pypi.org/project/vba-edit)
@@ -40,8 +40,9 @@ usage: word-vba [-h] {edit,import,export} ...
 
 vba-edit v0.1.0 (word-vba)
 
-A command-line tool for managing VBA content in Word documents.
-This tool allows you to edit, import, and export VBA content from Word documents.
+A command-line tool suite for managing VBA content in MS Office documents.
+
+WORD-VBA allows you to edit, import, and export VBA content from Word documents.
 If no file is specified, the tool will attempt to use the currently active Word document.
 
 Commands:
@@ -50,11 +51,22 @@ Commands:
     export  Export VBA content from Word document
 
 Examples:
-    word-vba edit
+    word-vba edit   <--- uses active Word document and current directory for exported 
+                         VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
+                         active Word document
+
     word-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
     word-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
 
-IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
+IMPORTANT: 
+           [!] It's early days. Use with care and backup your imortant macro-enabled
+               MS Office documents before using them with this tool!
+
+               First tests have been very promissing. Feedback appreciated via
+               github issues. 
+
+           [!] This tool requires "Trust access to the VBA project object model" 
+               enabled in Word.
 
 positional arguments:
   {edit,import,export}
@@ -63,7 +75,7 @@ positional arguments:
     export              Export VBA content from Word document
 
 options:
-  -h, --help            show this help message and exit
+  -h, --help            Show this help message and exit
 ```
 ##### EDIT
 

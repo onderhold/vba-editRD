@@ -31,8 +31,9 @@ def create_cli_parser() -> argparse.ArgumentParser:
         description=f"""
 {package_name_formatted} v{package_version} ({entry_point_name})
 
-A command-line tool for managing VBA content in Word documents.
-This tool allows you to edit, import, and export VBA content from Word documents.
+A command-line tool suite for managing VBA content in MS Office documents.
+
+WORD-VBA allows you to edit, import, and export VBA content from Word documents.
 If no file is specified, the tool will attempt to use the currently active Word document.
 
 Commands:
@@ -41,11 +42,22 @@ Commands:
     export  Export VBA content from Word document
 
 Examples:
-    {entry_point_name} edit
-    {entry_point_name} import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
-    {entry_point_name} export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    word-vba edit   <--- uses active Word document and current directory for exported 
+                         VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
+                         active Word document on save
 
-IMPORTANT: This tool requires "Trust access to the VBA project object model" enabled in Word.
+    word-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
+    word-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+
+IMPORTANT: 
+           [!] It's early days. Use with care and backup your imortant macro-enabled
+               MS Office documents before using them with this tool!
+
+               First tests have been very promissing. Feedback appreciated via
+               github issues. 
+
+           [!] This tool requires "Trust access to the VBA project object model" 
+               enabled in Word.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
