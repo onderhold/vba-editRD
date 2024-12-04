@@ -10,6 +10,13 @@
 > [!NOTE] 
 > This project is heavily inspired by code from ``xlwings vba edit``, actively maintained and developed by the [xlwings-Project](https://www.xlwings.org/) under the BSD 3-Clause License. We use the name ``xlwings`` solely to give credit to the orginal author and to refer to existing video tutorials on the subject of vba editing. This does not imply endorsement or sponsorship by the original authors or contributors.
 
+> [!IMPORTANT]
+> It's early days. Use with care and backup your imortant macro-enabled MS Office 
+> documents before using them with this tool!
+> 
+> First tests have been very promissing. Feedback appreciated via
+> github issues.
+
 ## Quickstart
 
 ### Installation
@@ -26,37 +33,33 @@ or ``uv pip``:
 uv pip install vba-edit
 ```
 
-### Usage
-
-- [Working with MS Word VBA code](#working-with-ms-word-vba-code)
-- [Working with MS Excel VBA code](#working-with-ms-excel-vba-code)
-- ... (work in progress)
-
-
-#### Working with MS Word VBA code
-
+### Overview command-line tools
 ```
-usage: word-vba [-h] {edit,import,export} ...
-
-vba-edit v0.1.0 (word-vba)
+vba-edit v0.1.0 (word-vba|excel-vba|access-vba|powerpoint-vba)
 
 A command-line tool suite for managing VBA content in MS Office documents.
 
-WORD-VBA allows you to edit, import, and export VBA content from Word documents.
-If no file is specified, the tool will attempt to use the currently active Word document.
+WORD|EXCEL|...-VBA allows you to edit, import, and export VBA content 
+from Office documents. If no file is specified, the tool will attempt
+to use the currently active document.
+
+         usage: word-vba [-h] {edit,import,export} ...
+         usage: excel-vba [-h] {edit,import,export} ...
+         usage: access-vba [-h] {edit,import,export} ...      {planned in v0.3.0}
+         usage: powerpoint-vba [-h] {edit,import,export} ...  {planned in v0.4.0}   
 
 Commands:
-    edit    Edit VBA content in Word document
-    import  Import VBA content into Word document
-    export  Export VBA content from Word document
+    edit    Edit VBA content in Office document
+    import  Import VBA content into Office document
+    export  Export VBA content from Office document
 
 Examples:
-    word-vba edit   <--- uses active Word document and current directory for exported 
-                         VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
-                         active Word document
+    word-vba  edit   <--- uses active Word document and current directory for exported 
+                          VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
+                          active Word document
 
-    word-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
-    word-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
+    excel-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
 
 IMPORTANT: 
            [!] It's early days. Use with care and backup your imortant macro-enabled
@@ -66,18 +69,33 @@ IMPORTANT:
                github issues. 
 
            [!] This tool requires "Trust access to the VBA project object model" 
-               enabled in Word.
+               enabled in MS Office Application.
 
 positional arguments:
   {edit,import,export}
-    edit                Edit VBA content in Word document
-    import              Import VBA content into Word document
-    export              Export VBA content from Word document
+    edit                Edit VBA content in Office document
+    import              Import VBA content into Office document
+    export              Export VBA content from Office
+    document
 
 options:
   -h, --help            Show this help message and exit
 ```
-##### EDIT
+
+> [!IMPORTANT]  
+> Requires "Trust access to the VBA project object model" enabled.
+> ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png)
+
+
+### Usage
+
+- [Working with MS Word VBA code](#working-with-ms-word-vba-code)
+- [Working with MS Excel VBA code](#working-with-ms-excel-vba-code)
+- ... (work in progress)
+
+#### Working with MS Word VBA code
+
+##### EDIT COMMAND
 
 ```sh
 word-vba edit
@@ -105,7 +123,7 @@ options:
   --verbose, -v         Enable verbose logging output
 ```
 
-##### EXPORT
+##### EXPORT COMMAND
 
 ```
 word-vba export
@@ -134,7 +152,7 @@ options:
   --verbose, -v         Enable verbose logging output
 ```
 
-##### IMPORT
+##### IMPORT COMMAND
 
 ```
 word-vba import
@@ -159,15 +177,8 @@ options:
   --verbose, -v         Enable verbose logging output
 ```
 
-
 > [!NOTE]  
 > Whenever you change something in the Word VBA editor (such as the layout of a form or the properties of a module), you have to run ``word-vba export``.
-
-> [!IMPORTANT]  
-> Requires "Trust access to the VBA project object model" enabled.
-> ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png)
-
-
 
 #### Working with MS Excel VBA code
 
@@ -193,9 +204,6 @@ Overwrites the VBA modules in the active (or specified) Excel document with thei
 
 > [!NOTE]  
 > Whenever you change something in the VBA editor (such as the layout of a form or the properties of a module), you have to run ``excel-vba export``.
-
-> [!IMPORTANT]  
-> Requires "Trust access to the VBA project object model" enabled.
 
 > [!TIP]
 > Watch the excellent [``xlwings vba edit`` walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings`` is installed and provides a rudimentary fallback, in case it is not installed. If you often work with Excel-VBA-Code, make sure that [``xlwings``](https://www.xlwings.org/) is installed:
