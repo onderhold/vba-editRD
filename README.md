@@ -93,12 +93,15 @@ usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding]
 options:
   -h, --help            show this help message and exit
   --encoding ENCODING, -e ENCODING
-                        Encoding to be used when reading VBA files from Word document (default: cp1252)
+                        Encoding to be used when reading VBA files from Word document 
+                        (default: cp1252)
   --detect-encoding, -d
-                        Auto-detect input encoding for VBA files exported from Word document
+                        Auto-detect input encoding for VBA files exported from Word 
+                        document
   --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
   --vba-directory VBA_DIRECTORY
-                        Directory to export VBA files to (optional, defaults to current directory)
+                        Directory to export VBA files to (optional, defaults to 
+                        current directory)
   --verbose, -v         Enable verbose logging output
 ```
 
@@ -107,7 +110,8 @@ options:
 ```
 word-vba export
 ```
-Overwrites the local version of the modules with those from the active (or specified) Word document.
+Overwrites the local version of the modules with those from the active (or specified) 
+Word document.
 
 ```
 usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
@@ -115,14 +119,18 @@ usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-en
 
 options:
   -h, --help            show this help message and exit
-  --save-metadata, -m   Save metadata file with character encoding information (default: False)
+  --save-metadata, -m   Save metadata file with character encoding information 
+                        (default: False)
   --encoding ENCODING, -e ENCODING
-                        Encoding to be used when reading VBA files from Word document (default: cp1252)
+                        Encoding to be used when reading VBA files from Word 
+                        document (default: cp1252)
   --detect-encoding, -d
-                        Auto-detect input encoding for VBA files exported from Word document
+                        Auto-detect input encoding for VBA files exported from 
+                        Word document
   --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
   --vba-directory VBA_DIRECTORY
-                        Directory to export VBA files to (optional, defaults to current directory)
+                        Directory to export VBA files to (optional, defaults to 
+                        current directory)
   --verbose, -v         Enable verbose logging output
 ```
 
@@ -132,7 +140,8 @@ options:
 word-vba import
 ```
 
-Overwrites the VBA modules in the active (or specified) Word document with their local versions.
+Overwrites the VBA modules in the active (or specified) Word document with their 
+local versions.
 
 ```
 usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] 
@@ -141,19 +150,24 @@ usage: word-vba import [-h] [--encoding ENCODING] [--file FILE]
 options:
   -h, --help            show this help message and exit
   --encoding ENCODING, -e ENCODING
-                        Encoding to be used when writing VBA files back into Word document (default: cp1252)
+                        Encoding to be used when writing VBA files back into Word 
+                        document (default: cp1252)
   --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
   --vba-directory VBA_DIRECTORY
-                        Directory to export VBA files to (optional, defaults to current directory)
+                        Directory to export VBA files to (optional, defaults to 
+                        current directory)
   --verbose, -v         Enable verbose logging output
 ```
 
 
 > [!NOTE]  
-> Whenever you change something in the VBA editor (such as the layout of a form or the properties of a module), you have to run ``word-vba export``.
+> Whenever you change something in the Word VBA editor (such as the layout of a form or the properties of a module), you have to run ``word-vba export``.
 
 > [!IMPORTANT]  
 > Requires "Trust access to the VBA project object model" enabled.
+> ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png){ width=20% }
+
+
 
 #### Working with MS Excel VBA code
 
