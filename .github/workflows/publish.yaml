@@ -2,9 +2,8 @@
 name: Test and Publish to PyPI and Test PyPI
 
 on:
-  push:
-    tags:
-      - "v*"  # Trigger only on version tags, e.g., v1.0.0
+  release:
+    types: [published]
 
 jobs:
 
@@ -38,7 +37,7 @@ jobs:
       run: echo "branch_name=$(echo ${GITHUB_REF} | sed 's|refs/heads/||; s|refs/tags/||')" >> $GITHUB_ENV
 
     - name: Publish to Test PyPI
-      if: startsWith(github.ref, 'refs/tags/v') && github.ref_name == 'dev'
+      if: startsWith(github.ref, 'refs/tags/v') && github.event.release.prerelease
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
@@ -46,7 +45,7 @@ jobs:
         twine upload --repository-url https://test.pypi.org/legacy/ dist/*
 
     - name: Publish to PyPI
-      if: startsWith(github.ref, 'refs/tags/v') && github.ref_name == 'main'
+      if: startsWith(github.ref, 'refs/tags/v') && !github.event.release.prerelease
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
