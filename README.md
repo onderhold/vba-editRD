@@ -165,7 +165,7 @@ options:
 
 > [!IMPORTANT]  
 > Requires "Trust access to the VBA project object model" enabled.
-> ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png){ width=20% }
+> ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png)
 
 
 
