@@ -261,7 +261,7 @@ with their local versions.
 
       uv pip install xlwings
 
-.. |CI| image:: https://github.com/markuskiller/vba-edit/workflows/test.yaml/badge.svg?branch=dev
+.. |CI| image:: https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg
    :target: https://github.com/markuskiller/vba-edit/
 .. |PyPI - Version| image:: https://img.shields.io/pypi/v/vba-edit.svg
    :target: https://pypi.org/project/vba-edit
