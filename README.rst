@@ -249,7 +249,7 @@ with their local versions.
    ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings``
    is installed and provides a rudimentary fallback, in case it is not
    installed. If you often work with Excel-VBA-Code, make sure that
-   ```xlwings`` <https://www.xlwings.org/>`__ is installed:
+   `xlwings <https://www.xlwings.org/>`__ is installed:
 
    .. code:: sh
 

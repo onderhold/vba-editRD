@@ -1,5 +1,6 @@
 # vba-edit
- Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of coding assistants and version control workflows)
+
+Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of coding assistants and version control workflows)
 
 [![CI](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg)](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml)
 [![PyPI - Version](https://img.shields.io/pypi/v/vba-edit.svg)](https://pypi.org/project/vba-edit)
@@ -7,13 +8,12 @@
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/vba-edit)](https://pypi.org/project/vba-edit)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-> [!NOTE] 
+> [!NOTE]
 > This project is heavily inspired by code from ``xlwings vba edit``, actively maintained and developed by the [xlwings-Project](https://www.xlwings.org/) under the BSD 3-Clause License. We use the name ``xlwings`` solely to give credit to the orginal author and to refer to existing video tutorials on the subject of vba editing. This does not imply endorsement or sponsorship by the original authors or contributors.
-
 > [!IMPORTANT]
-> It's early days. Use with care and backup your imortant macro-enabled MS Office 
+> It's early days. Use with care and backup your imortant macro-enabled MS Office
 > documents before using them with this tool!
-> 
+>
 > First tests have been very promissing. Feedback appreciated via
 > github issues.
 
@@ -41,7 +41,8 @@ uv pip install vba-edit
 ```
 
 ### Overview command-line tools
-```
+
+```text
 vba-edit v0.1.0 (word-vba|excel-vba|access-vba|powerpoint-vba)
 
 A command-line tool suite for managing VBA content in MS Office documents.
@@ -85,7 +86,6 @@ options:
 > Requires "Trust access to the VBA project object model" enabled.
 > ![Trust Center Settings](https://langui.ch/wp/wp-content/uploads/2024/12/trust_center_vba_object_model_settings.png)
 
-
 ### Usage
 
 - [Working with MS Word VBA code](#working-with-ms-word-vba-code)
@@ -102,7 +102,7 @@ word-vba edit
 
 Updates the VBA modules of the active (or specified) MS Word document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Word into your current working directory.
 
-```
+```text
 usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding] 
                      [--file FILE] [--vba-directory VBA_DIRECTORY] 
                      [--verbose]
@@ -124,13 +124,14 @@ options:
 
 ##### EXPORT COMMAND
 
-```
+```text
 word-vba export
 ```
-Overwrites the local version of the modules with those from the active (or specified) 
+
+Overwrites the local version of the modules with those from the active (or specified)
 Word document.
 
-```
+```text
 usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
                        [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
 
@@ -153,14 +154,14 @@ options:
 
 ##### IMPORT COMMAND
 
-```
+```text
 word-vba import
 ```
 
-Overwrites the VBA modules in the active (or specified) Word document with their 
+Overwrites the VBA modules in the active (or specified) Word document with their
 local versions.
 
-```
+```text
 usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] 
                        [--vba-directory VBA_DIRECTORY] [--verbose]
 
@@ -187,15 +188,16 @@ excel-vba edit
 
 Updates the VBA modules of the active (or specified) MS Excel document from their local exports every time you hit save. If you run this for the first time, the modules will be exported from MS Excel into your current working directory.
 
-> [!NOTE] 
+> [!NOTE]
 > The ``--file/-f`` flag allows you to specify a file path instead of using the active document.
 
-```
+```text
 excel-vba export
 ```
+
 Overwrites the local version of the modules with those from the active (or specified) Excel document.
 
-```
+```text
 excel-vba import
 ```
 
@@ -204,13 +206,15 @@ Overwrites the VBA modules in the active (or specified) Excel document with thei
 > [!NOTE]  
 > Whenever you change something in the VBA editor (such as the layout of a form or the properties of a module), you have to run ``excel-vba export``.
 
+### Video Tutorial
+
 > [!TIP]
-> Watch the excellent [``xlwings vba edit`` walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings`` is installed and provides a rudimentary fallback, in case it is not installed. If you often work with Excel-VBA-Code, make sure that [``xlwings``](https://www.xlwings.org/) is installed:
+> Watch the excellent [``xlwings vba edit`` walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings`` is installed and provides a rudimentary fallback, in case it is not installed. If you often work with Excel-VBA-Code, make sure that [xlwings](https://www.xlwings.org/) is installed:
 >
 > ```sh
 > pip install xlwings
 > ```
-> 
+>
 > or ``uv pip``:
 >
 > ```sh
