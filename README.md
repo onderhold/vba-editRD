@@ -1,7 +1,7 @@
 # vba-edit
  Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of coding assistants and version control workflows)
 
-[![CI](https://github.com/markuskiller/vba-edit/workflows/test.yaml/badge.svg?branch=dev)](https://github.com/markuskiller/vba-edit/)
+[![CI](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg)](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml)
 [![PyPI - Version](https://img.shields.io/pypi/v/vba-edit.svg)](https://pypi.org/project/vba-edit)
 [![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vba-edit.svg)](https://pypi.org/project/vba-edit)
 [![PyPI - Downloads](https://img.shields.io/pypi/dm/vba-edit.svg)](https://pypi.org/project/vba-edit)
