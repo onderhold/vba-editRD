@@ -1,4 +1,5 @@
 import pytest
+import subprocess
 from unittest.mock import patch  # , MagicMock
 import sys
 from vba_edit.excel_vba import vba_edit, vba_import, vba_export, main
@@ -22,73 +23,33 @@ def test_vba_export_without_xlwings():
         vba_export("test.xlsm")
     assert "VBA export without xlwings is not implemented yet" in str(exc_info.value)
 
+def test_excel_vba_help():
+    result = subprocess.run(['excel-vba', '-h'], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "usage: excel-vba" in result.stdout
+    assert "Commands:" in result.stdout
+    assert "edit" in result.stdout
+    assert "import" in result.stdout
+    assert "export" in result.stdout
 
-# # Test CLI argument parsing
-# @patch('vba_edit.excel_vba.vba_edit')
-# def test_main_edit_command_without_xlwings(mock_vba_edit):
-#     test_args = ['excel_vba.py', 'edit', '-f', 'test.xlsm']
-#     with patch.object(sys, 'argv', test_args):
-#         with patch('vba_edit.excel_vba.USE_XLWINGS', False):
-#             main()
-#             mock_vba_edit.assert_called_once()
+def test_excel_vba_edit():
+    result = subprocess.run(['excel-vba', 'edit', '-h'], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "usage: excel-vba [-h] [-f FILE] [-v] [--version] {edit" in result.stdout
+    assert "--verbose" in result.stdout
 
-# @patch('excel_vba.vba_import')
-# def test_main_import_command_without_xlwings(mock_vba_import):
-#     test_args = ['excel_vba.py', 'import', '-f', 'test.xlsx']
-#     with patch.object(sys, 'argv', test_args):
-#         with patch('excel_vba.USE_XLWINGS', False):
-#             main()
-#             mock_vba_import.assert_called_once()
 
-# @patch('excel_vba.vba_export')
-# def test_main_export_command_without_xlwings(mock_vba_export):
-#     test_args = ['excel_vba.py', 'export', '-f', 'test.xlsx']
-#     with patch.object(sys, 'argv', test_args):
-#         with patch('excel_vba.USE_XLWINGS', False):
-#             main()
-#             mock_vba_export.assert_called_once()
+def test_excel_vba_import():
+    result = subprocess.run(['excel-vba', 'import', '-h'], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "usage: excel-vba [-h] [-f FILE] [-v] [--version] {edit,import" in result.stdout
+    assert "--file" in result.stdout
 
-# # Test with xlwings integration
-# @pytest.fixture
-# def mock_xlwings():
-#     with patch.dict('sys.modules', {'xlwings': MagicMock()}):
-#         xlwings_mock = MagicMock()
-#         xlwings_mock.__version__ = '0.30.0'
-#         xlwings_mock.cli.vba_edit = MagicMock()
-#         xlwings_mock.cli.vba_import = MagicMock()
-#         xlwings_mock.cli.vba_export = MagicMock()
-#         yield xlwings_mock
-
-# @patch('excel_vba.USE_XLWINGS', True)
-# def test_main_edit_command_with_xlwings(mock_xlwings):
-#     test_args = ['excel_vba.py', 'edit', '-f', 'test.xlsx']
-#     with patch.object(sys, 'argv', test_args):
-#         main()
-#         mock_xlwings.cli.vba_edit.assert_called_once()
-
-# @patch('excel_vba.USE_XLWINGS', True)
-# def test_main_import_command_with_xlwings(mock_xlwings):
-#     test_args = ['excel_vba.py', 'import', '-f', 'test.xlsx']
-#     with patch.object(sys, 'argv', test_args):
-#         main()
-#         mock_xlwings.cli.vba_import.assert_called_once()
-
-# @patch('excel_vba.USE_XLWINGS', True)
-# def test_main_export_command_with_xlwings(mock_xlwings):
-#     test_args = ['excel_vba.py', 'export', '-f', 'test.xlsx']
-#     with patch.object(sys, 'argv', test_args):
-#         main()
-#         mock_xlwings.cli.vba_export.assert_called_once()
-
-# # Test verbose flag
-# @patch('builtins.print')
-# def test_verbose_flag(mock_print):
-#     test_args = ['excel_vba.py', 'edit', '-f', 'test.xlsx', '--verbose']
-#     with patch.object(sys, 'argv', test_args):
-#         with patch('excel_vba.USE_XLWINGS', False):
-#             main()
-#             mock_print.assert_called()
-
+def test_excel_vba_export():
+    result = subprocess.run(['excel-vba', 'export', '-h'], capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "usage: excel-vba [-h] [-f FILE] [-v] [--version] {edit,import,export}" in result.stdout
+    assert "--version" in result.stdout
 
 # Test version flag
 def test_version_flag():
