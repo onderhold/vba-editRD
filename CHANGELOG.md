@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- ### Security -->
 <!-- -  -->
 
-## [0.1.0] - 2024-12-05
+## [0.1.2] - 2024-12-05
 ### Added
 - Initial release (``word-vba edit|export|import`` & ``excel-vba edit|export|import``: wrapper for ``xlwings vba edit|export|import``)
 - Providing semantically consistent entry points for future integration of other MS Office applications (e.g. ``access-vba``, ``powerpoint-vba``, ...)
+- (0.1.1) -> (0.1.2) Fix badges and 1 dependency (``chardet``)
