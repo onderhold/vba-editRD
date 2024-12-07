@@ -16,10 +16,7 @@ workflows)
    License. We use the name ``xlwings`` solely to give credit to the
    orginal author and to refer to existing video tutorials on the
    subject of vba editing. This does not imply endorsement or
-   sponsorship by the original authors or contributors.
-
-.. important::
-
+   sponsorship by the original authors or contributors. [!IMPORTANT]
    It's early days. Use with care and backup your imortant macro-enabled
    MS Office documents before using them with this tool!
 
@@ -55,7 +52,7 @@ or ``uv pip``:
 Overview command-line tools
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-::
+.. code:: text
 
    vba-edit v0.1.0 (word-vba|excel-vba|access-vba|powerpoint-vba)
 
@@ -122,7 +119,7 @@ from their local exports every time you hit save. If you run this for
 the first time, the modules will be exported from MS Word into your
 current working directory.
 
-::
+.. code:: text
 
    usage: word-vba edit [-h] [--encoding ENCODING | --detect-encoding] 
                         [--file FILE] [--vba-directory VBA_DIRECTORY] 
@@ -145,14 +142,14 @@ current working directory.
 EXPORT COMMAND
 ''''''''''''''
 
-::
+.. code:: text
 
    word-vba export
 
 Overwrites the local version of the modules with those from the active
 (or specified) Word document.
 
-::
+.. code:: text
 
    usage: word-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
                           [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
@@ -176,14 +173,14 @@ Overwrites the local version of the modules with those from the active
 IMPORT COMMAND
 ''''''''''''''
 
-::
+.. code:: text
 
    word-vba import
 
 Overwrites the VBA modules in the active (or specified) Word document
 with their local versions.
 
-::
+.. code:: text
 
    usage: word-vba import [-h] [--encoding ENCODING] [--file FILE] 
                           [--vba-directory VBA_DIRECTORY] [--verbose]
@@ -222,14 +219,14 @@ current working directory.
    The ``--file/-f`` flag allows you to specify a file path instead of
    using the active document.
 
-::
+.. code:: text
 
    excel-vba export
 
 Overwrites the local version of the modules with those from the active
 (or specified) Excel document.
 
-::
+.. code:: text
 
    excel-vba import
 
@@ -242,9 +239,12 @@ with their local versions.
    of a form or the properties of a module), you have to run
    ``excel-vba export``.
 
+Video Tutorial
+~~~~~~~~~~~~~~
+
 .. tip::
 
-   Watch the excellent ```xlwings vba edit`` walkthrough on
+   Watch the excellent `xlwings vba edit walkthrough on
    Youtube <https://www.youtube.com/watch?v=xoO-Fx0fTpM>`__. The
    ``excel-vba edit`` command calls ``xlwings vba edit`` if ``xlwings``
    is installed and provides a rudimentary fallback, in case it is not
@@ -262,12 +262,12 @@ with their local versions.
       uv pip install xlwings
 
 .. |CI| image:: https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg
-   :target: https://github.com/markuskiller/vba-edit/
+   :target: https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml
 .. |PyPI - Version| image:: https://img.shields.io/pypi/v/vba-edit.svg
    :target: https://pypi.org/project/vba-edit
 .. |PyPI - Python Version| image:: https://img.shields.io/pypi/pyversions/vba-edit.svg
    :target: https://pypi.org/project/vba-edit
-.. |PyPI - Downloads| image:: https://img.shields.io/pypi/dm/vba-edit.svg
+.. |PyPI - Downloads| image:: https://img.shields.io/pypi/dm/vba-edit
    :target: https://pypi.org/project/vba-edit
 .. |License| image:: https://img.shields.io/badge/License-BSD_3--Clause-blue.svg
    :target: https://opensource.org/licenses/BSD-3-Clause
