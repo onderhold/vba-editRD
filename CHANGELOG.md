@@ -9,11 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- basic tests for entry points ``word-vba`` & ``excel-vba``
-- introducing binary distribution cli tools on Windows
-- ``excel-vba`` no longer relies on xlwings being installed
-- ``xlwings`` is now an optional import and there is the
-- ``--xlwings|-x`` command-line option to use ``xlwings`` if installed
+-
 
 <!-- ### Changed -->
 <!-- -  -->
@@ -28,6 +24,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- -  -->
 <!-- ### Security -->
 <!-- -  -->
+
+## [0.2.0]
+
+### Added
+
+- basic tests for entry points ``word-vba`` & ``excel-vba``
+- introducing binary distribution cli tools on Windows
+- ``excel-vba`` no longer relies on xlwings being installed
+- ``xlwings`` is now an optional import and there is the
+- ``--xlwings|-x`` command-line option to use ``xlwings`` if installed
+
+### Fixed
+
+- on ``*-vba edit`` files are no longer overwritten if ``vba-directory`` is 
+  already populated (trying to achieve similar behaviour compared to ``xlwings``;
+  TODO: files which are deleted from  ``vba-directory`` are not
+  automatically deleted in Office VBA editor just yet.)
 
 ## [0.1.2] - 2024-12-05
 
