@@ -66,12 +66,20 @@ IMPORTANT:
 
     # Create parsers for each command with common arguments
     common_args = {
-        "file": (["--file", "-f"], {"help": "Path to Word document (optional, defaults to active document)"}),
+        "file": (["--file", "-f"], {"help": "Path to Word document (optional, defaults to active workbook)"}),
         "vba_directory": (
             ["--vba-directory"],
             {"help": "Directory to export VBA files to (optional, defaults to current directory)"},
         ),
         "verbose": (["--verbose", "-v"], {"action": "store_true", "help": "Enable verbose logging output"}),
+        "logfile": (
+            ["--logfile", "-l"],
+            {
+                "nargs": "?",
+                "const": "vba_edit.log",
+                "help": "Enable logging to file. Optional path can be specified (default: vba_edit.log)",
+            },
+        ),
     }
 
     # Edit command

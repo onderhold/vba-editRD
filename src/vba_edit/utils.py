@@ -15,11 +15,12 @@ from vba_edit.office_vba import DocumentClosedError, RPCError, check_rpc_error
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(verbose: bool = False) -> None:
-    """Configure root logger with console and file handlers.
+def setup_logging(verbose: bool = False, logfile: Optional[str] = None) -> None:
+    """Configure root logger.
 
     Args:
-        verbose (bool): Enable verbose (DEBUG) logging if True
+        verbose: Enable verbose (DEBUG) logging if True
+        logfile: Path to log file. If None, only console logging is enabled.
     """
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
@@ -34,19 +35,20 @@ def setup_logging(verbose: bool = False) -> None:
     console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
     root_logger.addHandler(console_handler)
 
-    # File handler with rotation
-    try:
-        file_handler = logging.handlers.RotatingFileHandler(
-            "vba_edit.log",
-            maxBytes=1024 * 1024,  # 1MB
-            backupCount=3,
-            encoding="utf-8",
-        )
-        file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
-        file_handler.setLevel(logging.DEBUG)
-        root_logger.addHandler(file_handler)
-    except Exception as e:
-        logger.warning(f"Could not set up file logging: {e}")
+    # File handler with rotation (only if logfile is specified)
+    if logfile:
+        try:
+            file_handler = logging.handlers.RotatingFileHandler(
+                logfile,
+                maxBytes=1024 * 1024,  # 1MB
+                backupCount=3,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+            file_handler.setLevel(logging.DEBUG)
+            root_logger.addHandler(file_handler)
+        except Exception as e:
+            logger.warning(f"Could not set up file logging: {e}")
 
 
 def error_handler(func: Callable) -> Callable:

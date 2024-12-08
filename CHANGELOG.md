@@ -8,13 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- 
+
+- basic tests for entry points ``word-vba`` & ``excel-vba``
+- introducing binary distribution cli tools on Windows
+- ``excel-vba`` no longer relies on xlwings being installed
+- ``xlwings`` is now an optional import and there is the
+- ``--xlwings|-x`` command-line option to use ``xlwings`` if installed
 
 <!-- ### Changed -->
 <!-- -  -->
 
 ### Fixed
-- 
+
+-
 
 <!-- ### Deprecated -->
 <!-- -  -->
@@ -24,7 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- -  -->
 
 ## [0.1.2] - 2024-12-05
+
 ### Added
+
 - Initial release (``word-vba edit|export|import`` & ``excel-vba edit|export|import``: wrapper for ``xlwings vba edit|export|import``)
 - Providing semantically consistent entry points for future integration of other MS Office applications (e.g. ``access-vba``, ``powerpoint-vba``, ...)
 - (0.1.1) -> (0.1.2) Fix badges and 1 dependency (``chardet``)
