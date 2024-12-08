@@ -209,7 +209,7 @@ Overwrites the VBA modules in the active (or specified) Excel document with thei
 ### Video Tutorial
 
 > [!TIP]
-> Watch the excellent [xlwings vba edit walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit|import|export`` should do more or less what ``xlwings vba edit|import|edit`` does (with the exception that currently VBA files are not (yet) deleted from the Excel file if they are deleted in edit mode). If you prefer to use ``xlwings`` & it is installed, it is possible to use ``xlwings`` with an additional command-line arguments provided by ``vba-edit`` (e.g. ``--vba-directory``). If you often work with Excel-VBA-Code, make sure that [xlwings](https://www.xlwings.org/) is installed:
+> Watch the excellent [xlwings vba edit walkthrough on Youtube](https://www.youtube.com/watch?v=xoO-Fx0fTpM). The ``excel-vba edit|import|export`` should do more or less what ``xlwings vba edit|import|edit`` does (with the exception that currently VBA files are not (yet) deleted from the Excel file if they are deleted in edit mode). If you prefer to use ``xlwings`` & it is installed, it is possible to use a wrapper for ``xlwings`` by typing ``excel-vba edit|import|export -x``. In this case, there is an additional command-line option ``--vba-directory``. If you often work with Excel-VBA-Code, make sure that [xlwings](https://www.xlwings.org/) is installed:
 >
 > ```sh
 > pip install xlwings

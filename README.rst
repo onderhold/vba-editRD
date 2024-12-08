@@ -250,10 +250,11 @@ Video Tutorial
    ``xlwings vba edit|import|edit`` does (with the exception that
    currently VBA files are not (yet) deleted from the Excel file if they
    are deleted in edit mode). If you prefer to use ``xlwings`` & it is
-   installed, it is possible to use ``xlwings`` with an additional
-   command-line arguments provided by ``vba-edit`` (e.g.
-   ``--vba-directory``). If you often work with Excel-VBA-Code, make
-   sure that `xlwings <https://www.xlwings.org/>`__ is installed:
+   installed, it is possible to use a wrapper for ``xlwings`` by typing
+   ``excel-vba edit|import|export -x``. In this case, there is an
+   additional command-line option ``--vba-directory``. If you often work
+   with Excel-VBA-Code, make sure that
+   `xlwings <https://www.xlwings.org/>`__ is installed:
 
    .. code:: sh
 
