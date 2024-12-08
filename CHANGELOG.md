@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - basic tests for entry points ``word-vba`` & ``excel-vba``
 - introducing binary distribution cli tools on Windows
 - ``excel-vba`` no longer relies on xlwings being installed
-- ``xlwings`` is now an optional import
+- ``xlwings`` is now an optional import and there is the
 - ``--xlwings|-x`` command-line option to use ``xlwings`` if installed
 
 <!-- ### Changed -->

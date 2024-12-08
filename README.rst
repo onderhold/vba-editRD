@@ -54,7 +54,7 @@ Overview command-line tools
 
 .. code:: text
 
-   vba-edit v0.1.0 (word-vba|excel-vba|access-vba|powerpoint-vba)
+   vba-edit v0.2.0 (word-vba|excel-vba|...)
 
    A command-line tool suite for managing VBA content in MS Office documents.
 
@@ -78,10 +78,11 @@ Overview command-line tools
                              active Word document
        
 
-       Options implemented for word-vba:                         {excel-vba planned in v0.2.0}
+       Options:
 
        word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
        word-vba  export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+       word-vba  edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
 
    positional arguments:
      {edit,import,export}
@@ -107,8 +108,8 @@ Usage
 Working with MS Word VBA code
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-EDIT COMMAND
-''''''''''''
+WORD-VBA EDIT COMMAND
+'''''''''''''''''''''
 
 .. code:: sh
 
@@ -138,9 +139,12 @@ current working directory.
                            Directory to export VBA files to (optional, defaults to 
                            current directory)
      --verbose, -v         Enable verbose logging output
+     --logfile [LOGFILE], -l [LOGFILE]
+                           Enable logging to file. Optional path can be specified 
+                           (default: vba_edit.log)
 
-EXPORT COMMAND
-''''''''''''''
+WORD-VBA EXPORT COMMAND
+'''''''''''''''''''''''
 
 .. code:: text
 
@@ -169,9 +173,12 @@ Overwrites the local version of the modules with those from the active
                            Directory to export VBA files to (optional, defaults to 
                            current directory)
      --verbose, -v         Enable verbose logging output
+     --logfile [LOGFILE], -l [LOGFILE]
+                           Enable logging to file. Optional path can be specified 
+                           (default: vba_edit.log)
 
-IMPORT COMMAND
-''''''''''''''
+WORD-VBA IMPORT COMMAND
+'''''''''''''''''''''''
 
 .. code:: text
 
@@ -195,6 +202,9 @@ with their local versions.
                            Directory to export VBA files to (optional, defaults to 
                            current directory)
      --verbose, -v         Enable verbose logging output
+     --logfile [LOGFILE], -l [LOGFILE]
+                           Enable logging to file. Optional path can be specified 
+                           (default: vba_edit.log)
 
 .. note::
 
