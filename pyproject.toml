@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vba_edit"                     
-version = "0.1.3a1"                     
+version = "0.1.3a5"                     
 description = "Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitating the use of coding assistants and version control workflows)"
 authors = [
     {name = "Markus Killer", email = "m.killer@langui.ch"}
@@ -27,7 +27,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Topic :: Office/Business :: Office Suites",
 ]
-dependencies = ["chardet", "xlwings", "watchgod"]               # Required dependencies
+dependencies = ["chardet", "watchgod"]               # Required dependencies
 
 [project.optional-dependencies]
 dev = [
@@ -41,6 +41,7 @@ dev = [
     "pyinstaller",
 ]
 all = [
+    "xlwings",
     
 ]
 
@@ -93,3 +94,5 @@ push            = false
     "src/vba_edit/__init__.py" = ["{version}"]
     "setup.cfg" = ['version = {version}']
     
+
+

@@ -1,5 +1,10 @@
 {
     "python.testing.pytestArgs": [],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "markdownlint.config": {
+        "MD024": {
+            "siblings_only": true
+        }
+    }
 }
