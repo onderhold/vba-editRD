@@ -199,15 +199,12 @@ class OfficeVBAHandler(ABC):
                 # Don't log the error here since it will be handled at a higher level
                 raise VBAError("Failed to save document") from e
 
+    # In OfficeVBAHandler.handle_document_module:
     def handle_document_module(self, component: Any, content: str, temp_file: Path) -> None:
         """Handle the special document module."""
         try:
-            # Skip header section for document module
-            content_lines = content.splitlines()
-            if len(content_lines) > 9:
-                actual_code = "\n".join(content_lines[9:])
-            else:
-                actual_code = ""
+            # No header stripping during import as it was already stripped during export
+            actual_code = content
 
             logger.debug(f"Processing document module: {component.Name}")
 
@@ -516,7 +513,10 @@ class WordVBAHandler(OfficeVBAHandler):
 
                     # Read with specified encoding and write as UTF-8
                     with open(temp_file, "r", encoding=self.encoding) as source:
-                        content = source.read()
+                        if component.Type == 100:  # Document module (ThisDocument)
+                            content = "".join(source.readlines()[9:])  # Strip header during export
+                        else:
+                            content = source.read()
 
                     with open(final_file, "w", encoding="utf-8") as target:
                         target.write(content)
