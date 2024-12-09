@@ -91,7 +91,9 @@ class DocumentClosedError(VBAError):
         super().__init__(
             f"\nThe Office {doc_type} has been closed. The edit session will be terminated.\n"
             f"IMPORTANT: Any changes made after closing the {doc_type} must be imported using\n"
-            f"'*-vba import' before starting a new edit session, otherwise they will be lost."
+            f"'*-vba import' or by saving the file again in the next edit session.\n"
+            f"As of version 0.2.1, the '*-vba edit' command will no longer overwrite files\n"
+            f"already present in the VBA directory."
         )
 
 
