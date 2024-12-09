@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- on ``*-vba edit`` files are no longer overwritten if ``vba-directory`` is 
+- on ``*-vba edit`` files are no longer overwritten if ``vba-directory`` is
   already populated (trying to achieve similar behaviour compared to ``xlwings``;
   TODO: files which are deleted from  ``vba-directory`` are not
   automatically deleted in Office VBA editor just yet.)
