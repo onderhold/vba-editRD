@@ -16,9 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- WORD: fixed removing of headers before saving exported file to disk and making sure that there is no attempt at removing headers when changed file is reimported
-- while ``excel-vba`` edit does not overwrite files in ``edit`` mode, ``word-vba edit`` still did. That's fixed now.
-- TODO: corrected behaviour when files are deleted from ``--vba-directory`` in ``edit`` mode (deleted files are now also deleted in VBA editor of the respective office application, which aligns with ``xlwings vba edit`` implementation)
+- WORD: fixed removing of headers before saving exported file to disk and making sure that there is no attempt at removing headers when changed file is reimported`
+- While ``excel-vba`` edit does not overwrite files in ``edit`` mode (>=v0.2.0), ``word-vba edit`` still did. That's fixed now.
+- WORD & EXCEL: when files are deleted from ``--vba-directory`` in ``edit`` mode those files are now also deleted in VBA editor of the respective office application (which aligns with ``xlwings vba edit`` implementation)
+- improved credit to original ``xlwings`` project by adding an inline comment closer to OfficeVBAHandler, which contains the core VBA interaction logic that was inspired by ``xlwings``
 
 <!-- ### Deprecated -->
 <!-- -  -->
