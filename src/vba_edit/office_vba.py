@@ -469,7 +469,7 @@ class WordVBAHandler(OfficeVBAHandler):
             logger.info(f"Watching for changes in {self.vba_dir}...")
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
-            
+
             # Track existing files
             last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
             last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
@@ -769,7 +769,7 @@ class ExcelVBAHandler(OfficeVBAHandler):
             logger.info(f"Watching for changes in {self.vba_dir}...")
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
-            
+
             # Track existing files
             last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
             last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
