@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# macOS metadata
+.DS_Store
+
 # Linting
 .ruff_cache/
 

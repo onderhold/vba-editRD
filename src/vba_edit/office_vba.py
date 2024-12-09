@@ -11,6 +11,31 @@ import win32com.client
 from pywintypes import com_error
 from watchgod import Change, RegExpWatcher
 
+"""
+The VBA import/export/edit functionality is based on the excellent work done by the xlwings project
+(https://github.com/xlwings/xlwings) which is distributed under the BSD 3-Clause License:
+
+Copyright (c) 2014-present, Zoomer Analytics GmbH.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+This module extends the original xlwings VBA interaction concept to provide a consistent 
+interface for interacting with VBA code across different Microsoft Office applications.
+"""
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
