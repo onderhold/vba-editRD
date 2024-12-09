@@ -11,6 +11,31 @@ import win32com.client
 from pywintypes import com_error
 from watchgod import Change, RegExpWatcher
 
+"""
+The VBA import/export/edit functionality is based on the excellent work done by the xlwings project
+(https://github.com/xlwings/xlwings) which is distributed under the BSD 3-Clause License:
+
+Copyright (c) 2014-present, Zoomer Analytics GmbH.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+This module extends the original xlwings VBA interaction concept to provide a consistent 
+interface for interacting with VBA code across different Microsoft Office applications.
+"""
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -66,7 +91,9 @@ class DocumentClosedError(VBAError):
         super().__init__(
             f"\nThe Office {doc_type} has been closed. The edit session will be terminated.\n"
             f"IMPORTANT: Any changes made after closing the {doc_type} must be imported using\n"
-            f"'*-vba import' before starting a new edit session, otherwise they will be lost."
+            f"'*-vba import' or by saving the file again in the next edit session.\n"
+            f"As of version 0.2.1, the '*-vba edit' command will no longer overwrite files\n"
+            f"already present in the VBA directory."
         )
 
 
@@ -199,15 +226,12 @@ class OfficeVBAHandler(ABC):
                 # Don't log the error here since it will be handled at a higher level
                 raise VBAError("Failed to save document") from e
 
+    # In OfficeVBAHandler.handle_document_module:
     def handle_document_module(self, component: Any, content: str, temp_file: Path) -> None:
         """Handle the special document module."""
         try:
-            # Skip header section for document module
-            content_lines = content.splitlines()
-            if len(content_lines) > 9:
-                actual_code = "\n".join(content_lines[9:])
-            else:
-                actual_code = ""
+            # No header stripping during import as it was already stripped during export
+            actual_code = content
 
             logger.debug(f"Processing document module: {component.Name}")
 
@@ -446,6 +470,11 @@ class WordVBAHandler(OfficeVBAHandler):
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
 
+            # Track existing files
+            last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
             # Setup the file watcher
             watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*(\.cls|\.frm|\.bas)$")
 
@@ -456,6 +485,25 @@ class WordVBAHandler(OfficeVBAHandler):
                     if not self.is_document_open():
                         raise DocumentClosedError("document")
                     last_check_time = current_time
+
+                # Get current files
+                current_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
+                # Check for deleted files
+                deleted_files = last_known_files - current_files
+                for deleted_file in deleted_files:
+                    try:
+                        module_name = os.path.splitext(deleted_file)[0]
+                        vb_component = self.get_vba_project().VBComponents(module_name)
+                        self.get_vba_project().VBComponents.Remove(vb_component)
+                        logger.info(f"Deleted module: {module_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete module {module_name}: {str(e)}")
+
+                # Update last known files
+                last_known_files = current_files
 
                 # Check for file changes
                 changes = watcher.check()
@@ -482,7 +530,14 @@ class WordVBAHandler(OfficeVBAHandler):
         finally:
             logger.info("VBA editor stopped.")
 
-    def export_vba(self, save_metadata: bool = False) -> None:
+    def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
+        """Export VBA content from the Word document.
+
+        Args:
+            save_metadata: Whether to save metadata about the export
+            overwrite: Whether to overwrite existing files. If False, only exports files
+                    that don't exist yet.
+        """
         try:
             self.open_document()
             vba_project = self.get_vba_project()
@@ -509,6 +564,11 @@ class WordVBAHandler(OfficeVBAHandler):
                     temp_file = self.vba_dir / f"{file_name}.temp"
                     final_file = self.vba_dir / file_name
 
+                    # Skip if file exists and we're not overwriting
+                    if not overwrite and final_file.exists():
+                        logger.debug(f"Skipping existing file: {final_file}")
+                        continue
+
                     logger.debug(f"Exporting component {component.Name} to {final_file}")
 
                     # Export to temporary file
@@ -516,7 +576,10 @@ class WordVBAHandler(OfficeVBAHandler):
 
                     # Read with specified encoding and write as UTF-8
                     with open(temp_file, "r", encoding=self.encoding) as source:
-                        content = source.read()
+                        if component.Type == 100:  # Document module
+                            content = "".join(source.readlines()[9:])  # Strip header during export
+                        else:
+                            content = source.read()
 
                     with open(final_file, "w", encoding="utf-8") as target:
                         target.write(content)
@@ -707,6 +770,11 @@ class ExcelVBAHandler(OfficeVBAHandler):
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
 
+            # Track existing files
+            last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
             # Setup the file watcher
             watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*(\.cls|\.frm|\.bas)$")
 
@@ -717,6 +785,25 @@ class ExcelVBAHandler(OfficeVBAHandler):
                     if not self.is_document_open():
                         raise DocumentClosedError("workbook")
                     last_check_time = current_time
+
+                # Get current files
+                current_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
+                # Check for deleted files
+                deleted_files = last_known_files - current_files
+                for deleted_file in deleted_files:
+                    try:
+                        module_name = os.path.splitext(deleted_file)[0]
+                        vb_component = self.get_vba_project().VBComponents(module_name)
+                        self.get_vba_project().VBComponents.Remove(vb_component)
+                        logger.info(f"Deleted module: {module_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete module {module_name}: {str(e)}")
+
+                # Update last known files
+                last_known_files = current_files
 
                 # Check for file changes
                 changes = watcher.check()
