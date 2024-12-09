@@ -469,6 +469,11 @@ class WordVBAHandler(OfficeVBAHandler):
             logger.info(f"Watching for changes in {self.vba_dir}...")
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
+            
+            # Track existing files
+            last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
 
             # Setup the file watcher
             watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*(\.cls|\.frm|\.bas)$")
@@ -480,6 +485,25 @@ class WordVBAHandler(OfficeVBAHandler):
                     if not self.is_document_open():
                         raise DocumentClosedError("document")
                     last_check_time = current_time
+
+                # Get current files
+                current_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
+                # Check for deleted files
+                deleted_files = last_known_files - current_files
+                for deleted_file in deleted_files:
+                    try:
+                        module_name = os.path.splitext(deleted_file)[0]
+                        vb_component = self.get_vba_project().VBComponents(module_name)
+                        self.get_vba_project().VBComponents.Remove(vb_component)
+                        logger.info(f"Deleted module: {module_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete module {module_name}: {str(e)}")
+
+                # Update last known files
+                last_known_files = current_files
 
                 # Check for file changes
                 changes = watcher.check()
@@ -745,6 +769,11 @@ class ExcelVBAHandler(OfficeVBAHandler):
             logger.info(f"Watching for changes in {self.vba_dir}...")
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
+            
+            # Track existing files
+            last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
 
             # Setup the file watcher
             watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*(\.cls|\.frm|\.bas)$")
@@ -756,6 +785,25 @@ class ExcelVBAHandler(OfficeVBAHandler):
                     if not self.is_document_open():
                         raise DocumentClosedError("workbook")
                     last_check_time = current_time
+
+                # Get current files
+                current_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
+                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+
+                # Check for deleted files
+                deleted_files = last_known_files - current_files
+                for deleted_file in deleted_files:
+                    try:
+                        module_name = os.path.splitext(deleted_file)[0]
+                        vb_component = self.get_vba_project().VBComponents(module_name)
+                        self.get_vba_project().VBComponents.Remove(vb_component)
+                        logger.info(f"Deleted module: {module_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete module {module_name}: {str(e)}")
+
+                # Update last known files
+                last_known_files = current_files
 
                 # Check for file changes
                 changes = watcher.check()

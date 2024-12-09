@@ -190,6 +190,8 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         logger.info(f"Executing command: {args.command}")
         try:
             if args.command == "edit":
+                # Display warning about module deletion
+                print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
                 # For edit command, first export without overwriting
                 handler.export_vba(overwrite=False)
                 try:
