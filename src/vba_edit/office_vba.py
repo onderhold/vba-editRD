@@ -504,7 +504,14 @@ class WordVBAHandler(OfficeVBAHandler):
         finally:
             logger.info("VBA editor stopped.")
 
-    def export_vba(self, save_metadata: bool = False) -> None:
+    def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
+        """Export VBA content from the Word document.
+
+        Args:
+            save_metadata: Whether to save metadata about the export
+            overwrite: Whether to overwrite existing files. If False, only exports files
+                    that don't exist yet.
+        """
         try:
             self.open_document()
             vba_project = self.get_vba_project()
@@ -531,6 +538,11 @@ class WordVBAHandler(OfficeVBAHandler):
                     temp_file = self.vba_dir / f"{file_name}.temp"
                     final_file = self.vba_dir / file_name
 
+                    # Skip if file exists and we're not overwriting
+                    if not overwrite and final_file.exists():
+                        logger.debug(f"Skipping existing file: {final_file}")
+                        continue
+
                     logger.debug(f"Exporting component {component.Name} to {final_file}")
 
                     # Export to temporary file
@@ -538,7 +550,7 @@ class WordVBAHandler(OfficeVBAHandler):
 
                     # Read with specified encoding and write as UTF-8
                     with open(temp_file, "r", encoding=self.encoding) as source:
-                        if component.Type == 100:  # Document module (ThisDocument)
+                        if component.Type == 100:  # Document module
                             content = "".join(source.readlines()[9:])  # Strip header during export
                         else:
                             content = source.read()

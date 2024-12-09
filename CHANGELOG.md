@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
--
+- WORD: fixed removing of headers before saving exported file to disk and making sure that there is no attempt at removing headers when changed file is reimported
+- while ``excel-vba`` edit does not overwrite files in ``edit`` mode, ``word-vba edit`` still did. That's fixed now.
+- TODO: corrected behaviour when files are deleted from ``--vba-directory`` in ``edit`` mode (deleted files are now also deleted in VBA editor of the respective office application, which aligns with ``xlwings vba edit`` implementation)
 
 <!-- ### Deprecated -->
 <!-- -  -->
@@ -32,8 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - basic tests for entry points ``word-vba`` & ``excel-vba``
 - introducing binary distribution cli tools on Windows
 - ``excel-vba`` no longer relies on xlwings being installed
-- ``xlwings`` is now an optional import and there is the
-- ``--xlwings|-x`` command-line option to use ``xlwings`` if installed
+- ``xlwings`` is now an optional import
+- ``--xlwings|-x`` command-line option to be able to use ``xlwings`` if installed
 
 ### Fixed
 

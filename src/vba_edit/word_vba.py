@@ -193,7 +193,10 @@ def handle_word_vba_command(args: argparse.Namespace) -> None:
         logger.info(f"Executing command: {args.command}")
         try:
             if args.command == "edit":
-                handler.export_vba()
+                # Display warning about module deletion
+                print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
+                # For edit command, first export without overwriting
+                handler.export_vba(overwrite=False)
                 try:
                     handler.watch_changes()
                 except (DocumentClosedError, RPCError) as e:
@@ -203,7 +206,8 @@ def handle_word_vba_command(args: argparse.Namespace) -> None:
             elif args.command == "import":
                 handler.import_vba()
             elif args.command == "export":
-                handler.export_vba(save_metadata=getattr(args, "save_metadata", False))
+                # For export command, always overwrite
+                handler.export_vba(save_metadata=getattr(args, "save_metadata", False), overwrite=True)
         except (DocumentClosedError, RPCError) as e:
             logger.error(str(e))
             sys.exit(1)
