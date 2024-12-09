@@ -43,7 +43,7 @@ uv pip install vba-edit
 ### Overview command-line tools
 
 ```text
-vba-edit v0.2.0 (word-vba|excel-vba|...)
+vba-edit v0.2.1 (word-vba|excel-vba|...)
 
 A command-line tool suite for managing VBA content in MS Office documents.
 
