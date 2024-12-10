@@ -10,6 +10,7 @@ Enable seamless MS Office VBA code editing in preferred editor or IDE (facilitat
 
 > [!NOTE]
 > This project is heavily inspired by code from ``xlwings vba edit``, actively maintained and developed by the [xlwings-Project](https://www.xlwings.org/) under the BSD 3-Clause License. We use the name ``xlwings`` solely to give credit to the orginal author and to refer to existing video tutorials on the subject of vba editing. This does not imply endorsement or sponsorship by the original authors or contributors.
+
 > [!IMPORTANT]
 > It's early days. Use with care and backup your imortant macro-enabled MS Office
 > documents before using them with this tool!
