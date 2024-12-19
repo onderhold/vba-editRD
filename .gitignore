@@ -9,6 +9,11 @@ __pycache__/
 # macOS metadata
 .DS_Store
 
+# VBA export files
+*.bas
+*.cls
+*.frm
+
 # Linting
 .ruff_cache/
 
