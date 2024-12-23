@@ -3,8 +3,11 @@ import datetime
 import json
 import logging
 import os
+import re
+import shutil
 import sys
 import time
+from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, Optional, Any, List
 import win32com.client
@@ -38,6 +41,105 @@ interface for interacting with VBA code across different Microsoft Office applic
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+
+class VBAModuleType(Enum):
+    """VBA module types"""
+
+    DOCUMENT = auto()  # ThisWorkbook or Worksheet modules
+    CLASS = auto()  # Regular class modules
+    STANDARD = auto()  # Standard modules (.bas)
+    FORM = auto()  # UserForm modules
+
+
+def determine_cls_type(header: str) -> VBAModuleType:
+    """Determine if a .cls file is a document module or regular class module.
+
+    Args:
+        header: Content of the VBA component header
+
+    Returns:
+        VBAModuleType.DOCUMENT or VBAModuleType.CLASS
+    """
+    # Extract key attributes
+    predeclared = re.search(r"Attribute VB_PredeclaredId = (\w+)", header)
+    exposed = re.search(r"Attribute VB_Exposed = (\w+)", header)
+
+    # Document modules have both attributes set to True
+    if predeclared and exposed and predeclared.group(1).lower() == "true" and exposed.group(1).lower() == "true":
+        return VBAModuleType.DOCUMENT
+
+    return VBAModuleType.CLASS
+
+
+def get_module_type(file_path: Path) -> VBAModuleType:
+    """Determine VBA module type from file extension and content.
+
+    Args:
+        file_path: Path to the VBA module file
+
+    Returns:
+        Appropriate VBAModuleType
+    """
+    suffix = file_path.suffix.lower()
+
+    if suffix == ".bas":
+        return VBAModuleType.STANDARD
+    elif suffix == ".frm":
+        return VBAModuleType.FORM
+    elif suffix == ".cls":
+        # For .cls files, we need to check the header
+        header_file = file_path.with_suffix(".header")
+        if header_file.exists():
+            with open(header_file, "r", encoding="utf-8") as f:
+                return determine_cls_type(f.read())
+        else:
+            logger.warning(f"No header file found for {file_path}, treating as regular class module")
+            return VBAModuleType.CLASS
+    else:
+        raise ValueError(f"Unknown file extension: {suffix}")
+
+
+def split_vba_content(content: str) -> tuple[str, str]:
+    """Split VBA content into header and code sections.
+
+    Args:
+        content: Complete VBA component content
+
+    Returns:
+        Tuple of (header, code)
+
+    Note:
+        Only module-level attributes (VB_Name, VB_GlobalNameSpace, VB_Creatable,
+        VB_PredeclaredId, VB_Exposed) are considered part of the header.
+        Procedure-level attributes are considered part of the code.
+    """
+    if not content.strip():
+        return "", ""
+
+    lines = content.splitlines()
+
+    # Module-level attributes start with "Attribute VB_"
+    # They appear at the start of the file
+    last_attr_idx = -1
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("Attribute VB_"):
+            last_attr_idx = i
+        elif last_attr_idx >= 0 and not stripped.startswith("Attribute VB_"):
+            # We've found the end of the module-level attributes
+            break
+
+    if last_attr_idx == -1:
+        # No module-level attributes found, treat everything as code
+        return "", content
+
+    # Split at the last module-level attribute
+    header = "\n".join(lines[: last_attr_idx + 1])
+    code = "\n".join(lines[last_attr_idx + 1 :])
+
+    return header.strip(), code.strip()
 
 
 def check_rpc_error(error: Exception) -> bool:
@@ -638,6 +740,250 @@ class ExcelVBAHandler(OfficeVBAHandler):
             logger.error(f"{error_msg}: {str(e)}")
             raise VBAAccessError(error_msg) from e
 
+    def get_component_info(self, component: Any) -> dict:
+        """Get detailed information about a VBA component.
+
+        Args:
+            component: A VBA component object
+
+        Returns:
+            Dictionary containing component metadata including correct type and extension
+        """
+        try:
+            # Get code line count safely
+            code_lines = component.CodeModule.CountOfLines if hasattr(component, "CodeModule") else 0
+
+            # Map component types to metadata
+            type_info = {
+                1: {  # Standard Module
+                    "type_name": "Standard Module",
+                    "extension": ".bas",
+                    "cls_header": False,
+                },
+                2: {  # Class Module
+                    "type_name": "Class Module",
+                    "extension": ".cls",
+                    "cls_header": True,
+                },
+                3: {  # MSForm
+                    "type_name": "UserForm",
+                    "extension": ".frm",
+                    "cls_header": True,
+                },
+                100: {  # Document Module
+                    "type_name": "Document Module",
+                    "extension": ".cls",
+                    "cls_header": True,
+                },
+            }
+
+            # Get type info or use defaults for unknown types
+            type_data = type_info.get(
+                component.Type, {"type_name": "Unknown", "extension": ".txt", "cls_header": False}
+            )
+
+            return {
+                "name": component.Name,
+                "type": component.Type,
+                "type_name": type_data["type_name"],
+                "extension": type_data["extension"],
+                "code_lines": code_lines,
+                "has_cls_header": type_data["cls_header"],
+            }
+        except Exception as e:
+            logger.error(f"Failed to get component info for {component.Name}: {str(e)}")
+            raise VBAError(f"Failed to analyze component {component.Name}") from e
+
+    def export_component(self, component: Any, directory: Path) -> None:
+        """Export a VBA component as separate header and code files.
+
+        Args:
+            component: VBA component to export
+            directory: Target directory for export
+
+        Raises:
+            VBAError: If export fails
+        """
+        temp_file = None
+        try:
+            name = component.Name
+            temp_file = directory / f"{name}.tmp"
+
+            # Special handling for forms - export .frx first
+            if component.Type == self.VBEXT_CT_MSFORM:
+                frx_source = Path(self.doc.FullName).parent / f"{name}.frx"
+                if frx_source.exists():
+                    frx_target = directory / f"{name}.frx"
+                    try:
+                        shutil.copy2(frx_source, frx_target)
+                        logger.debug(f"Exported form binary: {frx_target}")
+                    except (OSError, shutil.Error) as e:
+                        logger.error(f"Failed to copy form binary {name}.frx: {e}")
+                        raise VBAError(f"Failed to export form binary {name}.frx") from e
+
+            # Export component to temp file
+            try:
+                component.Export(str(temp_file))
+            except Exception as e:
+                raise VBAError(f"Failed to export component {name}") from e
+
+            # Read content with specified encoding
+            try:
+                with open(temp_file, "r", encoding=self.encoding) as f:
+                    content = f.read()
+            except UnicodeError as e:
+                logger.error(f"Encoding error reading {name}: {e}")
+                raise VBAError(f"Failed to read {name} with encoding {self.encoding}") from e
+            except OSError as e:
+                logger.error(f"IO error reading {name}: {e}")
+                raise VBAError(f"Failed to read exported component {name}") from e
+
+            # Split content
+            header, code = split_vba_content(content)
+
+            # Validate split content
+            if not header and component.Type != self.VBEXT_CT_STMODULE:
+                logger.warning(f"No header found for non-standard module {name}")
+
+            # Write header and code files
+            header_file = directory / f"{name}.header"
+            code_file = directory / f"{name}{self.type_to_ext[component.Type]}"
+
+            try:
+                # Write header if we have one
+                if header:
+                    with open(header_file, "w", encoding="utf-8") as f:
+                        f.write(header + "\n")
+
+                # Always write code file
+                with open(code_file, "w", encoding="utf-8") as f:
+                    f.write(code + "\n")
+
+            except OSError as e:
+                logger.error(f"Failed to write files for {name}: {e}")
+                raise VBAError(f"Failed to write component files for {name}") from e
+
+            logger.info(f"Exported: {code_file.name}")
+
+        except VBAError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error exporting {component.Name}: {e}")
+            raise VBAError(f"Failed to export component {component.Name}") from e
+        finally:
+            if temp_file and temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
+
+    def import_component(self, file_path: Path, components: Any) -> None:
+        """Import a VBA component with proper header handling.
+
+        Args:
+            file_path: Path to the code file
+            components: VBA components collection
+
+        Raises:
+            VBAError: If import fails
+        """
+        temp_file = None
+        try:
+            name = file_path.stem
+            header_file = file_path.with_suffix(".header")
+
+            # Handle form binaries first
+            if file_path.suffix.lower() == ".frm":
+                frx_source = file_path.with_suffix(".frx")
+                if frx_source.exists():
+                    frx_target = Path(self.doc.FullName).parent / f"{name}.frx"
+                    try:
+                        shutil.copy2(frx_source, frx_target)
+                        logger.debug(f"Imported form binary: {frx_target}")
+                    except (OSError, shutil.Error) as e:
+                        logger.error(f"Failed to copy form binary {name}.frx: {e}")
+                        raise VBAError(f"Failed to import form binary {name}.frx") from e
+
+            # Read header if it exists
+            header = ""
+            if header_file.exists():
+                try:
+                    with open(header_file, "r", encoding="utf-8") as f:
+                        header = f.read().strip()
+                except OSError as e:
+                    logger.error(f"Failed to read header for {name}: {e}")
+                    raise VBAError(f"Failed to read header file for {name}") from e
+
+            # Read code
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    code = f.read().strip()
+            except OSError as e:
+                logger.error(f"Failed to read code for {name}: {e}")
+                raise VBAError(f"Failed to read code file for {name}") from e
+
+            # For .cls files, determine if this is a document module
+            if file_path.suffix.lower() == ".cls" and header:
+                # Check if this is a document module by examining attributes
+                if determine_cls_type(header) == VBAModuleType.DOCUMENT:
+                    try:
+                        # Get existing document module
+                        doc_component = components(name)
+                        # Clear existing code
+                        if doc_component.CodeModule.CountOfLines > 0:
+                            doc_component.CodeModule.DeleteLines(1, doc_component.CodeModule.CountOfLines)
+                        # Add new code
+                        if code.strip():
+                            doc_component.CodeModule.AddFromString(code)
+                        logger.info(f"Updated document module: {file_path.name}")
+                        return
+                    except Exception as e:
+                        logger.error(f"Failed to update document module {name}: {e}")
+                        raise VBAError(f"Failed to update document module {name}") from e
+
+            # For standard modules without header, create minimal header
+            if not header and file_path.suffix.lower() == ".bas":
+                header = f'Attribute VB_Name = "{name}"'
+
+            # Combine content
+            content = f"{header}\n\n{code}\n" if header else f"{code}\n"
+
+            # Create temporary file for import
+            temp_file = file_path.with_suffix(".tmp")
+            try:
+                with open(temp_file, "w", encoding=self.encoding) as f:
+                    f.write(content)
+            except OSError as e:
+                logger.error(f"Failed to create temp file for {name}: {e}")
+                raise VBAError(f"Failed to create temporary file for {name}") from e
+
+            # Remove existing component if it exists (except document modules)
+            try:
+                existing = components(name)
+                components.Remove(existing)
+                logger.debug(f"Removed existing component: {name}")
+            except Exception:
+                logger.debug(f"No existing component to remove: {name}")
+
+            try:
+                # Import the component
+                components.Import(str(temp_file))
+                logger.info(f"Imported: {file_path.name}")
+            except Exception as e:
+                raise VBAError(f"Failed to import component {name}") from e
+
+        except VBAError:
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error importing {file_path}: {e}")
+            raise VBAError(f"Failed to import {file_path.name}") from e
+        finally:
+            if temp_file and temp_file.exists():
+                try:
+                    temp_file.unlink()
+                except OSError:
+                    pass
+
     def get_document_module_name(self) -> str:
         return "ThisWorkbook"
 
@@ -646,7 +992,7 @@ class ExcelVBAHandler(OfficeVBAHandler):
             if self.doc is None:
                 return False
 
-            # Try to access workbook name and state
+            # Try to access workbook name
             _ = self.doc.Name
 
             # Check if workbook is still open in Excel
@@ -696,9 +1042,17 @@ class ExcelVBAHandler(OfficeVBAHandler):
             return False
 
     def import_single_file(self, file_path: Path) -> None:
-        """Import a single VBA file that has changed."""
+        """Import a single VBA file that has changed.
+
+        Args:
+            file_path: Path to the changed VBA file
+
+        Raises:
+            DocumentClosedError: If workbook is closed
+            RPCError: If Excel is not responding
+            VBAError: If import fails
+        """
         logger.info(f"Processing changes in {file_path.name}")
-        temp_file = None
 
         try:
             # Check if workbook is still open
@@ -707,79 +1061,36 @@ class ExcelVBAHandler(OfficeVBAHandler):
 
             vba_project = self.get_vba_project()
             components = vba_project.VBComponents
-            component_name = file_path.stem
 
-            # Read content with UTF-8 encoding (as exported)
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # Import the component
+            self.import_component(file_path, components)
 
-            if component_name == self.get_document_module_name():
-                # Handle ThisWorkbook module
-                logger.debug("Processing ThisWorkbook module")
-                wb_component = components(self.get_document_module_name())
-                temp_file = file_path.with_suffix(".temp")
-                self.handle_document_module(wb_component, content, temp_file)
-
-            elif component_name.startswith("Sheet") and component_name.replace("Sheet", "").isdigit():
-                # This is a worksheet module - update existing module's code
-                logger.debug(f"Processing worksheet module: {component_name}")
-                try:
-                    sheet_component = components(component_name)
-                    if sheet_component.CodeModule.CountOfLines > 0:
-                        sheet_component.CodeModule.DeleteLines(1, sheet_component.CodeModule.CountOfLines)
-                    if content.strip():
-                        sheet_component.CodeModule.AddFromString(content)
-                    logger.info(f"Updated worksheet module: {file_path.name}")
-                except Exception as e:
-                    logger.error(f"Could not update worksheet module {component_name}: {str(e)}")
-                    raise
-
-            else:
-                # Handle regular components
-                logger.debug(f"Processing regular module: {component_name}")
-                content_bytes = content.encode(self.encoding)
-                temp_file = file_path.with_suffix(".temp")
-
-                with open(temp_file, "wb") as f:
-                    f.write(content_bytes)
-
-                # Remove existing component if it exists
-                try:
-                    existing = components(component_name)
-                    components.Remove(existing)
-                    logger.debug(f"Removed existing component: {component_name}")
-                except Exception:
-                    logger.debug(f"No existing component to remove: {component_name}")
-
-                # Import the component
-                components.Import(str(temp_file))
-                logger.info(f"Imported: {file_path.name}")
-
+            # Save after successful import
             self.doc.Save()
 
-        finally:
-            if temp_file and temp_file.exists():
-                try:
-                    temp_file.unlink()
-                except Exception as e:
-                    logger.warning(f"Failed to remove temporary file {temp_file}: {e}")
+        except (DocumentClosedError, RPCError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to process {file_path.name}: {str(e)}")
+            raise VBAError(f"Failed to import {file_path.name}") from e
 
     def watch_changes(self) -> None:
+        """Watch for changes in VBA files and update the workbook."""
         try:
             logger.info(f"Watching for changes in {self.vba_dir}...")
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
 
             # Track existing files
-            last_known_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
-            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
-            last_known_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+            last_known_files = set()
+            for ext in [".cls", ".bas", ".frm"]:
+                last_known_files.update(path.name for path in self.vba_dir.glob(f"[!~$]*{ext}"))
 
-            # Setup the file watcher
-            watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*(\.cls|\.frm|\.bas)$")
+            # Setup file watcher
+            watcher = RegExpWatcher(self.vba_dir, re_files=r"^.*\.(cls|frm|bas)$")
 
             while True:
-                # Always check connection if interval has elapsed
+                # Check connection periodically
                 current_time = time.time()
                 if current_time - last_check_time >= check_interval:
                     if not self.is_document_open():
@@ -787,22 +1098,22 @@ class ExcelVBAHandler(OfficeVBAHandler):
                     last_check_time = current_time
 
                 # Get current files
-                current_files = set(path.name for path in self.vba_dir.glob("[!~$]*.bas"))
-                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.cls"))
-                current_files.update(path.name for path in self.vba_dir.glob("[!~$]*.frm"))
+                current_files = set()
+                for ext in [".cls", ".bas", ".frm"]:
+                    current_files.update(path.name for path in self.vba_dir.glob(f"[!~$]*{ext}"))
 
-                # Check for deleted files
+                # Handle deleted files
                 deleted_files = last_known_files - current_files
                 for deleted_file in deleted_files:
                     try:
-                        module_name = os.path.splitext(deleted_file)[0]
+                        module_name = Path(deleted_file).stem
                         vb_component = self.get_vba_project().VBComponents(module_name)
                         self.get_vba_project().VBComponents.Remove(vb_component)
                         logger.info(f"Deleted module: {module_name}")
                     except Exception as e:
                         logger.error(f"Failed to delete module {module_name}: {str(e)}")
 
-                # Update last known files
+                # Update tracked files
                 last_known_files = current_files
 
                 # Check for file changes
@@ -819,19 +1130,18 @@ class ExcelVBAHandler(OfficeVBAHandler):
                                 logger.warning(f"Error handling changes (will retry): {str(e)}")
                                 continue
 
-                # Small sleep to prevent excessive CPU usage
+                # Prevent excessive CPU usage
                 time.sleep(0.8)
 
         except KeyboardInterrupt:
             logger.info("\nStopping VBA editor...")
         except (DocumentClosedError, RPCError) as e:
-            logger.error(str(e))
-            sys.exit(1)
+            raise e
         finally:
             logger.info("VBA editor stopped.")
 
     def import_vba(self) -> None:
-        """Import VBA content into the Excel workbook."""
+        """Import VBA content into the Excel workbook with type preservation."""
         try:
             # First check if document is accessible
             if self.doc is None:
@@ -841,7 +1151,11 @@ class ExcelVBAHandler(OfficeVBAHandler):
             vba_project = self.get_vba_project()
             components = vba_project.VBComponents
 
-            vba_files = [f for f in self.vba_dir.glob("*.*") if f.suffix in self.type_to_ext.values()]
+            # Find all VBA files
+            vba_files = []
+            for ext in [".cls", ".bas", ".frm"]:
+                vba_files.extend(self.vba_dir.glob(f"*{ext}"))
+
             if not vba_files:
                 logger.info("No VBA files found to import.")
                 return
@@ -850,81 +1164,28 @@ class ExcelVBAHandler(OfficeVBAHandler):
             for vba_file in vba_files:
                 logger.info(f"  - {vba_file.name}")
 
+            # Import components
             for vba_file in vba_files:
-                temp_file = None
                 try:
-                    component_name = vba_file.stem
-                    logger.debug(f"Processing {vba_file.name}")
-
-                    with open(vba_file, "r", encoding="utf-8") as f:
-                        content = f.read()
-
-                    if component_name == self.get_document_module_name():
-                        # Handle ThisWorkbook module
-                        logger.debug("Processing ThisWorkbook module")
-                        wb_component = components(self.get_document_module_name())
-                        temp_file = vba_file.with_suffix(".temp")
-                        self.handle_document_module(wb_component, content, temp_file)
-
-                    elif component_name.startswith("Sheet") and component_name.replace("Sheet", "").isdigit():
-                        # This is a worksheet module - update existing module's code
-                        logger.debug(f"Processing worksheet module: {component_name}")
-                        try:
-                            sheet_component = components(component_name)
-                            if sheet_component.CodeModule.CountOfLines > 0:
-                                sheet_component.CodeModule.DeleteLines(1, sheet_component.CodeModule.CountOfLines)
-                            if content.strip():
-                                sheet_component.CodeModule.AddFromString(content)
-                            logger.info(f"Updated worksheet module: {vba_file.name}")
-                        except Exception as e:
-                            logger.error(f"Could not update worksheet module {component_name}: {str(e)}")
-                            continue
-
-                    else:
-                        # Regular module or class
-                        logger.debug(f"Processing regular module: {component_name}")
-                        content_bytes = content.encode(self.encoding)
-                        temp_file = vba_file.with_suffix(".temp")
-
-                        with open(temp_file, "wb") as f:
-                            f.write(content_bytes)
-
-                        # Remove existing if it exists
-                        try:
-                            existing = components(component_name)
-                            components.Remove(existing)
-                            logger.debug(f"Removed existing component: {component_name}")
-                        except Exception:
-                            logger.debug(f"No existing component to remove: {component_name}")
-
-                        # Import the component
-                        components.Import(str(temp_file))
-                        logger.info(f"Imported: {vba_file.name}")
-
-                    if temp_file and temp_file.exists():
-                        temp_file.unlink()
-
+                    self.import_component(vba_file, components)
                 except Exception as e:
-                    logger.error(f"Failed to process {vba_file.name}: {str(e)}")
-                    if temp_file and temp_file.exists():
-                        temp_file.unlink()
+                    logger.error(f"Failed to import {vba_file.name}: {str(e)}")
                     continue
 
-            # Only try to save if we successfully imported all files
+            # Only try to save if we successfully imported files
             self.save_document()
 
         except Exception as e:
             if check_rpc_error(e):
                 raise DocumentClosedError("workbook")
-            raise VBAImportError(str(e))
+            raise VBAError(str(e))
 
     def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
-        """Export VBA content from the Excel workbook.
+        """Export VBA content from the Excel workbook with type preservation.
 
         Args:
             save_metadata: Whether to save metadata about the export
-            overwrite: Whether to overwrite existing files. If False, only exports files
-                      that don't exist yet and sheet modules that contain code.
+            overwrite: Whether to overwrite existing files
         """
         try:
             self.open_document()
@@ -935,69 +1196,48 @@ class ExcelVBAHandler(OfficeVBAHandler):
                 logger.info("No VBA components found in the workbook.")
                 return
 
-            component_list = self.get_component_list()
+            # Get and log component information
+            component_list = []
+            for component in components:
+                info = self.get_component_info(component)
+                component_list.append(info)
+
             logger.info(f"\nFound {len(component_list)} VBA components:")
             for comp in component_list:
-                logger.info(f"  - {comp['name']} ({comp['extension']}, {comp['code_lines']} lines)")
+                logger.info(f"  - {comp['name']} ({comp['type_name']}, {comp['code_lines']} lines)")
 
-            detected_encodings = {}
+            encoding_data = {}
 
+            # Export components
             for component in components:
                 try:
-                    if component.Type not in self.type_to_ext:
-                        logger.warning(f"Skipping {component.Name} (unsupported type {component.Type})")
-                        continue
-
-                    file_name = f"{component.Name}{self.type_to_ext[component.Type]}"
-                    temp_file = self.vba_dir / f"{file_name}.temp"
-                    final_file = self.vba_dir / file_name
-
                     # Skip if file exists and we're not overwriting
-                    # For sheet modules (Type 100), only export if they contain code
-                    should_export = (
-                        overwrite
-                        or not final_file.exists()
-                        or (component.Type == self.VBEXT_CT_DOCUMENT and component.CodeModule.CountOfLines > 0)
-                    )
+                    info = self.get_component_info(component)
+                    final_file = self.vba_dir / f"{info['name']}{info['extension']}"
 
-                    if not should_export:
-                        logger.debug(f"Skipping existing file: {final_file}")
-                        continue
+                    if not overwrite and final_file.exists():
+                        if (
+                            info["type"] != 100  # Not a document module
+                            or (info["type"] == 100 and info["code_lines"] == 0)
+                        ):  # Empty document module
+                            logger.debug(f"Skipping existing file: {final_file}")
+                            continue
 
-                    logger.debug(f"Exporting component {component.Name} to {final_file}")
-
-                    # Export to temporary file
-                    component.Export(str(temp_file))
-
-                    # Read with specified encoding and write as UTF-8
-                    # For worksheet modules, skip the header
-                    with open(temp_file, "r", encoding=self.encoding) as source:
-                        if component.Type == self.VBEXT_CT_DOCUMENT:
-                            content = "".join(source.readlines()[9:])  # Skip header for document modules
-                        else:
-                            content = source.read()
-
-                    with open(final_file, "w", encoding="utf-8") as target:
-                        target.write(content)
-
-                    temp_file.unlink()
-                    logger.info(f"Exported: {final_file}")
+                    self.export_component(component, self.vba_dir)
+                    encoding_data[info["name"]] = {"encoding": self.encoding, "type": info["type_name"]}
 
                 except Exception as e:
-                    error_msg = f"Failed to export {component.Name}"
-                    logger.error(f"{error_msg}: {str(e)}")
-                    if temp_file.exists():
-                        temp_file.unlink()
+                    logger.error(f"Failed to export component {component.Name}: {str(e)}")
                     continue
 
             if save_metadata:
-                self._save_metadata(detected_encodings)
+                self._save_metadata(encoding_data)
 
             os.startfile(self.vba_dir)
 
         except Exception as e:
             error_msg = "Failed to export VBA content"
             logger.error(f"{error_msg}: {str(e)}")
-            raise VBAExportError(error_msg) from e
+            raise VBAError(error_msg) from e
         finally:
             self.save_document()
