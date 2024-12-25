@@ -9,15 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
--
+- ``--save-headers`` command-line option, supporting a comprehensive handling of headers (Issue #11)
+- new files created in ``--vba-directory`` are now automatically synced back to MS Office VBA editor in ``*-vba edit`` mode (previously, only file deletions were monitored and synced)
 
 <!-- ### Changed -->
 <!-- -  -->
 
 ### Fixed
 
--
-<!-- ### Deprecated -->
+- Bug Fix for Issue #10: Different VBA types are now properly recognised and minimal header sections generated before importing code back into the MS Office VBA editor ensures correct placement of 'Document modules' and 'Class modules' which are all exported as ``.cls`` files. (thanks to @takutta for testing and reporting)
+- In previous versions ``.frm`` were exported and code could be edited, however, when
 <!-- -  -->
 <!-- ### Removed -->
 <!-- -  -->

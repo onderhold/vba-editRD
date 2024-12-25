@@ -44,7 +44,7 @@ uv pip install vba-edit
 ### Overview command-line tools
 
 ```text
-vba-edit v0.2.1 (word-vba|excel-vba|...)
+vba-edit v0.2.2 (word-vba|excel-vba|...)
 
 A command-line tool suite for managing VBA content in MS Office documents.
 
@@ -73,6 +73,7 @@ Examples :
     word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
     word-vba  export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
     word-vba  edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+    word-vba  edit --save-headers
 
 positional arguments:
   {edit,import,export}
@@ -117,6 +118,8 @@ options:
   --detect-encoding, -d
                         Auto-detect input encoding for VBA files exported from Word 
                         document
+  --save-headers        Save VBA component headers to separate .header files
+                        (default: False)
   --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
   --vba-directory VBA_DIRECTORY
                         Directory to export VBA files to (optional, defaults to 
@@ -150,6 +153,8 @@ options:
   --detect-encoding, -d
                         Auto-detect input encoding for VBA files exported from 
                         Word document
+  --save-headers        Save VBA component headers to separate .header files
+                        (default: False)
   --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
   --vba-directory VBA_DIRECTORY
                         Directory to export VBA files to (optional, defaults to 

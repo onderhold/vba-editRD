@@ -48,6 +48,8 @@ Examples:
 
     word-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
     word-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    word-vba edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+    word-vba edit --save-headers
 
 IMPORTANT: 
            [!] It's early days. Use with care and backup your imortant macro-enabled
@@ -97,6 +99,11 @@ IMPORTANT:
         action="store_true",
         help="Auto-detect input encoding for VBA files exported from Word document",
     )
+    edit_parser.add_argument(
+        "--save-headers",
+        action="store_true",
+        help="Save VBA component headers to separate .header files (default: False)",
+    )
 
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Word document")
@@ -127,6 +134,11 @@ IMPORTANT:
         "-d",
         action="store_true",
         help="Auto-detect input encoding for VBA files exported from Word document",
+    )
+    export_parser.add_argument(
+        "--save-headers",
+        action="store_true",
+        help="Save VBA component headers to separate .header files (default: False)",
     )
 
     # Add common arguments to all subparsers
@@ -184,6 +196,7 @@ def handle_word_vba_command(args: argparse.Namespace) -> None:
                 vba_dir=args.vba_directory,
                 encoding=encoding,
                 verbose=getattr(args, "verbose", False),
+                save_headers=getattr(args, "save_headers", False),
             )
         except Exception as e:
             logger.error(f"Failed to initialize Word VBA handler: {str(e)}")
