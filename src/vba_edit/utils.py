@@ -4,6 +4,7 @@ import logging.handlers
 import sys
 from pathlib import Path
 from typing import Optional, Tuple, Callable
+import pywintypes
 import win32com.client
 import chardet
 from functools import wraps
@@ -337,6 +338,55 @@ def get_document_path(file_path: Optional[str] = None, app_type: str = "word") -
         return doc_path
     except Exception as e:
         raise DocumentNotFoundError(f"Could not determine document path: {e}")
+
+
+def is_office_app_installed(app_name: str) -> bool:
+    """Check if a specific Microsoft Office application is installed and accessible.
+
+    Args:
+        app_name: Office application name ('excel', 'word', 'access', 'powerpoint')
+
+    Returns:
+        bool: True if application is installed and accessible, False otherwise
+
+    Examples:
+        >>> is_office_app_installed('excel')
+        True
+        >>> is_office_app_installed('word')
+        False
+    """
+    app_progids = {
+        "excel": "Excel.Application",
+        "word": "Word.Application",
+        "access": "Access.Application",
+        "powerpoint": "PowerPoint.Application",
+    }
+
+    app_name = app_name.lower()
+    if app_name not in app_progids:
+        raise ValueError(f"Unsupported application: {app_name}. Must be one of: {', '.join(app_progids.keys())}")
+
+    app = None
+    try:
+        # First try to get an active instance
+        try:
+            win32com.client.GetActiveObject(app_progids[app_name])
+            return True
+        except pywintypes.com_error:
+            # No active instance, try to create new one
+            app = win32com.client.Dispatch(app_progids[app_name])
+            # Test actual access to confirm it's working
+            app.Name  # This will raise com_error if app isn't really available
+            return True
+
+    except pywintypes.com_error:
+        return False
+    finally:
+        if app is not None:
+            try:
+                app.Quit()
+            except pywintypes.com_error:
+                pass
 
 
 @error_handler

@@ -534,12 +534,12 @@ class OfficeVBAHandler(ABC):
     ):
         """Initialize the VBA handler.
 
-    Args:
-        doc_path (str): Path to the Office document
-        vba_dir (Optional[str]): Directory for VBA files (defaults to current directory)
-        encoding (str): Character encoding for VBA files (default: cp1252)
-        verbose (bool): Enable verbose logging
-        save_headers (bool): Whether to save VBA component headers to separate files
+        Args:
+            doc_path (str): Path to the Office document
+            vba_dir (Optional[str]): Directory for VBA files (defaults to current directory)
+            encoding (str): Character encoding for VBA files (default: cp1252)
+            verbose (bool): Enable verbose logging
+            save_headers (bool): Whether to save VBA component headers to separate files
         """
         self.doc_path = Path(doc_path).resolve()
         self.vba_dir = Path(vba_dir).resolve() if vba_dir else Path.cwd()
@@ -576,12 +576,8 @@ class OfficeVBAHandler(ABC):
         """Get the document type string for error messages."""
         return "workbook" if self.app_name == "Excel" else "document"
 
-    @abstractmethod
     def get_vba_project(self) -> Any:
         """Get the VBA project from the document.
-
-        Must be implemented by subclasses to provide application-specific
-        access to the VBA project.
 
         Returns:
             The VBA project object
@@ -590,17 +586,42 @@ class OfficeVBAHandler(ABC):
             VBAAccessError: If VBA project access is denied
             VBAError: For other VBA-related errors
         """
-        pass
+        try:
+            project = self.doc.VBProject
+            # Verify access by attempting to get components
+            _ = project.VBComponents
+            return project
+        except Exception as e:
+            error_msg = (
+                "Cannot access VBA project. Please ensure 'Trust access to the VBA "
+                "project object model' is enabled in Trust Center Settings."
+            )
+            logger.error(f"{error_msg}: {str(e)}")
+            raise VBAAccessError(error_msg) from e
 
     @abstractmethod
     def get_document_module_name(self) -> str:
         """Get the name of the document module (e.g., ThisDocument, ThisWorkbook)."""
         pass
 
-    @abstractmethod
     def is_document_open(self) -> bool:
         """Check if the document is still open and accessible."""
-        pass
+        try:
+            if self.doc is None:
+                return False
+
+            # Try to access document name
+            name = self.doc.Name
+            if callable(name):  # Handle Mock case in tests
+                name = name()
+
+            # Check if document is still active
+            return self.doc.FullName == str(self.doc_path)
+
+        except Exception as e:
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            raise DocumentClosedError(self.document_type)
 
     def initialize_app(self) -> None:
         """Initialize the Office application."""
@@ -1040,7 +1061,7 @@ class OfficeVBAHandler(ABC):
                 except Exception as e:
                     logger.error(f"Failed to export component {component.Name}: {str(e)}")
                     continue
-            
+
             if save_metadata:
                 self._save_metadata(encoding_data)
 
@@ -1085,38 +1106,9 @@ class WordVBAHandler(OfficeVBAHandler):
         """ProgID for COM automation."""
         return "Word.Application"
 
-    def get_vba_project(self) -> Any:
-        """Get the VBA project from the document."""
-        try:
-            return self.doc.VBProject
-        except Exception as e:
-            error_msg = (
-                "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
-                "is enabled in Word Trust Center Settings."
-            )
-            logger.error(f"{error_msg}: {str(e)}")
-            raise VBAAccessError(error_msg) from e
-
     def get_document_module_name(self) -> str:
         """Get the name of the document module."""
         return "ThisDocument"
-
-    def is_document_open(self) -> bool:
-        """Check if the document is still open and accessible."""
-        try:
-            if self.doc is None:
-                return False
-
-            # Try to access document name
-            _ = self.doc.Name
-
-            # Check if document is still active
-            return self.doc.FullName == str(self.doc_path)
-
-        except Exception as e:
-            if check_rpc_error(e):
-                raise RPCError(self.app_name)
-            return False
 
     def _open_document_impl(self) -> Any:
         """Implementation-specific document opening logic."""
@@ -1188,38 +1180,9 @@ class ExcelVBAHandler(OfficeVBAHandler):
         """ProgID for COM automation."""
         return "Excel.Application"
 
-    def get_vba_project(self) -> Any:
-        """Get the VBA project from the workbook."""
-        try:
-            return self.doc.VBProject
-        except Exception as e:
-            error_msg = (
-                "Cannot access VBA project. Please ensure 'Trust access to the VBA project object model' "
-                "is enabled in Excel Trust Center Settings."
-            )
-            logger.error(f"{error_msg}: {str(e)}")
-            raise VBAAccessError(error_msg) from e
-
     def get_document_module_name(self) -> str:
         """Get the name of the document module."""
         return "ThisWorkbook"
-
-    def is_document_open(self) -> bool:
-        """Check if the workbook is still open and accessible."""
-        try:
-            if self.doc is None:
-                return False
-
-            # Try to access workbook name
-            _ = self.doc.Name
-
-            # Check if workbook is still active
-            return self.doc.FullName == str(self.doc_path)
-
-        except Exception as e:
-            if check_rpc_error(e):
-                raise RPCError(self.app_name)
-            return False
 
     def _open_document_impl(self) -> Any:
         """Implementation-specific document opening logic."""
