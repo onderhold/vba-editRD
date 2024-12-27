@@ -16,7 +16,10 @@ workflows)
    License. We use the name ``xlwings`` solely to give credit to the
    orginal author and to refer to existing video tutorials on the
    subject of vba editing. This does not imply endorsement or
-   sponsorship by the original authors or contributors. [!IMPORTANT]
+   sponsorship by the original authors or contributors.
+
+.. important::
+
    It's early days. Use with care and backup your imortant macro-enabled
    MS Office documents before using them with this tool!
 
@@ -54,21 +57,21 @@ Overview command-line tools
 
 .. code:: text
 
-   vba-edit v0.2.1 (word-vba|excel-vba|...)
+   vba-edit v0.3.0 (word-vba|excel-vba|access-vba|...)
 
    A command-line tool suite for managing VBA content in MS Office documents.
 
-   WORD|EXCEL|...-VBA allows you to edit, import, and export VBA content 
+   WORD|EXCEL|ACCESS...-VBA allows you to edit, import, and export VBA content 
    from Office documents. If no file is specified, the tool will attempt
    to use the currently active document.
 
             usage: word-vba [-h] {edit,import,export} ...
             usage: excel-vba [-h] {edit,import,export} ...
-            usage: access-vba [-h] {edit,import,export} ...      {planned in v0.3.0}
+            usage: access-vba [-h] {import,export} ...           {no edit command (yet)}
             usage: powerpoint-vba [-h] {edit,import,export} ...  {planned in v0.4.0}   
 
    Commands:
-       edit    Edit VBA content in Office document
+       edit    Edit VBA content in Office document (WORD & EXCEL only)
        import  Import VBA content into Office document
        export  Export VBA content from Office document
 
@@ -83,6 +86,7 @@ Overview command-line tools
        word-vba  import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
        word-vba  export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
        word-vba  edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+       word-vba  edit --save-headers
 
    positional arguments:
      {edit,import,export}
@@ -103,6 +107,7 @@ Usage
 
 - `Working with MS Word VBA code <#working-with-ms-word-vba-code>`__
 - `Working with MS Excel VBA code <#working-with-ms-excel-vba-code>`__
+- `Working with MS Access VBA code <#working-with-ms-access-vba-code>`__
 - ... (work in progress)
 
 Working with MS Word VBA code
@@ -134,6 +139,8 @@ current working directory.
      --detect-encoding, -d
                            Auto-detect input encoding for VBA files exported from Word 
                            document
+     --save-headers        Save VBA component headers to separate .header files
+                           (default: False)
      --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
      --vba-directory VBA_DIRECTORY
                            Directory to export VBA files to (optional, defaults to 
@@ -168,6 +175,8 @@ Overwrites the local version of the modules with those from the active
      --detect-encoding, -d
                            Auto-detect input encoding for VBA files exported from 
                            Word document
+     --save-headers        Save VBA component headers to separate .header files
+                           (default: False)
      --file FILE, -f FILE  Path to Word document (optional, defaults to active document)
      --vba-directory VBA_DIRECTORY
                            Directory to export VBA files to (optional, defaults to 
@@ -275,6 +284,79 @@ Video Tutorial
    .. code:: sh
 
       uv pip install xlwings
+
+Working with MS Access VBA code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+ACCESS-VBA EXPORT COMMAND
+'''''''''''''''''''''''''
+
+.. code:: text
+
+   access-vba export
+
+Overwrites the local version of the modules with those from the active
+(or specified) Access database.
+
+.. code:: text
+
+   usage: access-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
+                          [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+
+   options:
+     -h, --help            show this help message and exit
+     --save-metadata, -m   Save metadata file with character encoding information 
+                           (default: False)
+     --encoding ENCODING, -e ENCODING
+                           Encoding to be used when reading VBA files from Access
+                           database (default: cp1252)
+     --detect-encoding, -d
+                           Auto-detect input encoding for VBA files exported from 
+                           Access database
+     --save-headers        Save VBA component headers to separate .header files
+                           (default: False)
+     --file FILE, -f FILE  Path to Access database (optional, defaults to active document)
+     --vba-directory VBA_DIRECTORY
+                           Directory to export VBA files to (optional, defaults to 
+                           current directory)
+     --verbose, -v         Enable verbose logging output
+     --logfile [LOGFILE], -l [LOGFILE]
+                           Enable logging to file. Optional path can be specified 
+                           (default: vba_edit.log)
+
+ACCESS-VBA IMPORT COMMAND
+'''''''''''''''''''''''''
+
+.. code:: text
+
+   access-vba import
+
+Overwrites the VBA modules in the active (or specified) Access database
+with their local versions.
+
+.. code:: text
+
+   usage: access-vba import [-h] [--encoding ENCODING] [--file FILE] 
+                          [--vba-directory VBA_DIRECTORY] [--verbose]
+
+   options:
+     -h, --help            show this help message and exit
+     --encoding ENCODING, -e ENCODING
+                           Encoding to be used when writing VBA files back into Access 
+                           document (default: cp1252)
+     --file FILE, -f FILE  Path to Access database (optional, defaults to active database)
+     --vba-directory VBA_DIRECTORY
+                           Directory to export VBA files to (optional, defaults to 
+                           current directory)
+     --verbose, -v         Enable verbose logging output
+     --logfile [LOGFILE], -l [LOGFILE]
+                           Enable logging to file. Optional path can be specified 
+                           (default: vba_edit.log)
+
+.. note::
+
+   Whenever you change something in the Access VBA editor (such as the
+   properties of a module), you have to run ``access-vba export``.
 
 .. |CI| image:: https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg
    :target: https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml

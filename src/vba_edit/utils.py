@@ -8,7 +8,6 @@ import pywintypes
 import win32com.client
 import chardet
 from functools import wraps
-from watchgod import Change, RegExpWatcher, watch  # noqa: F401
 
 from vba_edit.office_vba import DocumentClosedError, RPCError, check_rpc_error
 

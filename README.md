@@ -44,21 +44,21 @@ uv pip install vba-edit
 ### Overview command-line tools
 
 ```text
-vba-edit v0.2.2 (word-vba|excel-vba|...)
+vba-edit v0.3.0 (word-vba|excel-vba|access-vba|...)
 
 A command-line tool suite for managing VBA content in MS Office documents.
 
-WORD|EXCEL|...-VBA allows you to edit, import, and export VBA content 
+WORD|EXCEL|ACCESS...-VBA allows you to edit, import, and export VBA content 
 from Office documents. If no file is specified, the tool will attempt
 to use the currently active document.
 
          usage: word-vba [-h] {edit,import,export} ...
          usage: excel-vba [-h] {edit,import,export} ...
-         usage: access-vba [-h] {edit,import,export} ...      {planned in v0.3.0}
+         usage: access-vba [-h] {import,export} ...           {no edit command (yet)}
          usage: powerpoint-vba [-h] {edit,import,export} ...  {planned in v0.4.0}   
 
 Commands:
-    edit    Edit VBA content in Office document
+    edit    Edit VBA content in Office document (WORD & EXCEL only)
     import  Import VBA content into Office document
     export  Export VBA content from Office document
 
@@ -93,6 +93,7 @@ options:
 
 - [Working with MS Word VBA code](#working-with-ms-word-vba-code)
 - [Working with MS Excel VBA code](#working-with-ms-excel-vba-code)
+- [Working with MS Access VBA code](#working-with-ms-access-vba-code)
 - ... (work in progress)
 
 #### Working with MS Word VBA code
@@ -236,3 +237,71 @@ Overwrites the VBA modules in the active (or specified) Excel document with thei
 > ```sh
 > uv pip install xlwings
 > ```
+
+#### Working with MS Access VBA code
+
+##### ACCESS-VBA EXPORT COMMAND
+
+```text
+access-vba export
+```
+
+Overwrites the local version of the modules with those from the active (or specified)
+Access database.
+
+```text
+usage: access-vba export [-h] [--save-metadata] [--encoding ENCODING | --detect-encoding] 
+                       [--file FILE] [--vba-directory VBA_DIRECTORY] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --save-metadata, -m   Save metadata file with character encoding information 
+                        (default: False)
+  --encoding ENCODING, -e ENCODING
+                        Encoding to be used when reading VBA files from Access
+                        database (default: cp1252)
+  --detect-encoding, -d
+                        Auto-detect input encoding for VBA files exported from 
+                        Access database
+  --save-headers        Save VBA component headers to separate .header files
+                        (default: False)
+  --file FILE, -f FILE  Path to Access database (optional, defaults to active document)
+  --vba-directory VBA_DIRECTORY
+                        Directory to export VBA files to (optional, defaults to 
+                        current directory)
+  --verbose, -v         Enable verbose logging output
+  --logfile [LOGFILE], -l [LOGFILE]
+                        Enable logging to file. Optional path can be specified 
+                        (default: vba_edit.log)
+```
+
+##### ACCESS-VBA IMPORT COMMAND
+
+```text
+access-vba import
+```
+
+Overwrites the VBA modules in the active (or specified) Access database with their
+local versions.
+
+```text
+usage: access-vba import [-h] [--encoding ENCODING] [--file FILE] 
+                       [--vba-directory VBA_DIRECTORY] [--verbose]
+
+options:
+  -h, --help            show this help message and exit
+  --encoding ENCODING, -e ENCODING
+                        Encoding to be used when writing VBA files back into Access 
+                        document (default: cp1252)
+  --file FILE, -f FILE  Path to Access database (optional, defaults to active database)
+  --vba-directory VBA_DIRECTORY
+                        Directory to export VBA files to (optional, defaults to 
+                        current directory)
+  --verbose, -v         Enable verbose logging output
+  --logfile [LOGFILE], -l [LOGFILE]
+                        Enable logging to file. Optional path can be specified 
+                        (default: vba_edit.log)
+```
+
+> [!NOTE]  
+> Whenever you change something in the Access VBA editor (such as the properties of a module), you have to run ``access-vba export``.

@@ -44,6 +44,27 @@ interface for interacting with VBA code across different Microsoft Office applic
 logger = logging.getLogger(__name__)
 
 
+# Office app configuration
+OFFICE_MACRO_EXTENSIONS: Dict[str, str] = {
+    "word": ".docm",
+    "excel": ".xlsm",
+    "access": ".accdb",
+    "powerpoint": ".pptm",
+    # Potential future support
+    # "outlook": ".otm",
+    # "project": ".mpp",
+    # "visio": ".vsdm",
+}
+
+# Command-line entry points for different Office applications
+OFFICE_CLI_NAMES = {app: f"{app}-vba" for app in OFFICE_MACRO_EXTENSIONS.keys()}
+
+# Currently supported apps in vba-edit
+# "access" is only partially supported and will be included
+# in list as soon as tests are adapted to handle it
+SUPPORTED_APPS = ["word", "excel"]
+
+
 class VBADocumentNames:
     """Document module names across different languages."""
 
@@ -170,6 +191,7 @@ class VBAError(Exception):
     catching all VBA-related errors with a single except clause.
     """
 
+    # Forms are not supported in Access
     pass
 
 
@@ -1069,8 +1091,9 @@ class OfficeVBAHandler(ABC):
             time.sleep(0.5)
 
             # Safety check for forms after export
-            self._check_form_safety(self.vba_dir)
-            logger.debug(f"Running form safety check with save_headers={self.save_headers}")
+            if not self.app_name == "Access":
+                self._check_form_safety(self.vba_dir)
+                logger.debug(f"Running form safety check with save_headers={self.save_headers}")
 
             # Open directory in explorer
             os.startfile(self.vba_dir)
@@ -1230,3 +1253,200 @@ class ExcelVBAHandler(OfficeVBAHandler):
 
         except Exception as e:
             raise VBAError(f"Failed to update document module {name}") from e
+
+
+class AccessVBAHandler(OfficeVBAHandler):
+    """Microsoft Access specific implementation of VBA operations.
+
+    Provides Access-specific implementations of abstract methods from OfficeVBAHandler.
+    Currently only supports Standard (.bas) and Class (.cls) modules.
+
+    The handler manages operations like:
+    - Importing/exporting VBA modules
+    - Managing module types specific to Access
+    - Monitoring file changes
+    """
+
+    def __init__(
+        self,
+        doc_path: Path,
+        vba_dir: Optional[Path] = None,
+        encoding: str = "cp1252",
+        save_headers: bool = True,
+        verbose: bool = False,
+    ) -> None:
+        """Initialize Access VBA handler.
+
+        Args:
+            doc_path: Path to Access database
+            vba_dir: Directory for VBA files
+            encoding: Character encoding for VBA files
+            save_headers: Whether to save VBA component headers
+            verbose: Enable verbose logging
+        """
+        super().__init__(doc_path, vba_dir, encoding, save_headers, verbose)
+        self._database_open = False
+
+    @property
+    def app_name(self) -> str:
+        """Name of the Office application."""
+        return "Access"
+
+    @property
+    def app_progid(self) -> str:
+        """ProgID for COM automation."""
+        return "Access.Application"
+
+    @property
+    def document_type(self) -> str:
+        return "database"
+
+    def _open_document_impl(self) -> Any:
+        """Implementation-specific document opening for Access."""
+        try:
+            logger.debug(f"Opening Access database: {self.doc_path}")
+            self.app.OpenCurrentDatabase(str(self.doc_path))
+            self._database_open = True
+            return self.app.CurrentDb()
+        except Exception as e:
+            self._database_open = False
+            error_msg = f"Failed to open database: {self.doc_path}"
+            logger.error(f"{error_msg}: {str(e)}")
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            raise VBAError(error_msg) from e
+
+    def save_document(self) -> None:
+        """Save changes while keeping database open."""
+        if self.doc and self.app and self._database_open:
+            if not self._ensure_connection():
+                raise VBAError("Cannot verify database state - connection lost")
+            logger.info("Database connection verified")
+            try:
+                logger.debug("Saving Access database")
+                # Access doesn't need explicit save - changes are auto-committed
+                # Just verify connection is still active
+                _ = self.app.CurrentDb()
+                logger.info("Database connection verified")
+            except Exception as e:
+                error_msg = "Failed to save database"
+                logger.error(f"{error_msg}: {str(e)}")
+                if check_rpc_error(e):
+                    raise RPCError(self.app_name)
+                raise VBAError(error_msg) from e
+
+    def close_document(self) -> None:
+        """Close database explicitly."""
+        if self.app and self._database_open:
+            try:
+                logger.debug("Closing Access database")
+                self.app.CloseCurrentDatabase()
+                self._database_open = False
+            except Exception as e:
+                logger.error(f"Error closing database: {str(e)}")
+
+    def __del__(self):
+        """Cleanup handler."""
+        try:
+            self.close_document()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+
+    def get_vba_project(self) -> Any:
+        """Get VBA project for Access database."""
+        try:
+            vba_project = self.app.VBE.ActiveVBProject
+            if vba_project is None:
+                raise VBAAccessError(
+                    "Cannot access VBA project. Please ensure 'Trust access to the VBA "
+                    "project object model' is enabled in Trust Center Settings."
+                )
+            return vba_project
+        except Exception as e:
+            logger.error(f"Failed to access VBA project: {str(e)}")
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            raise VBAAccessError(
+                "Cannot access VBA project. Please ensure 'Trust access to the VBA "
+                "project object model' is enabled in Trust Center Settings."
+            ) from e
+
+    def get_document_module_name(self) -> str:
+        """Get the name of the document module."""
+        """
+        Access does not have an equivalent document module.
+        """
+        return ""
+
+    def initialize_app(self) -> None:
+        """Initialize the Access application."""
+        try:
+            if self.app is None:
+                logger.debug("Initializing Access application")
+                self.app = win32com.client.Dispatch(self.app_progid)
+                # Remove Visible=True setting
+        except Exception as e:
+            error_msg = "Failed to initialize Access application"
+            logger.error(f"{error_msg}: {str(e)}")
+            raise VBAError(error_msg) from e
+
+    def _handle_form_binary_export(self, name: str) -> None:
+        """Handle form binary export for Access."""
+        # Not needed as forms are not supported
+        pass
+
+    def _handle_form_binary_import(self, name: str) -> None:
+        """Handle form binary import for Access."""
+        # Forms are not supported in Access, so this method is not needed.
+        pass
+
+    def _update_document_module(self, name: str, code: str, components: Any) -> None:
+        """Update a module in Access."""
+        try:
+            # Get existing module
+            module = components(name)
+
+            # Clear existing code
+            if module.CodeModule.CountOfLines > 0:
+                module.CodeModule.DeleteLines(1, module.CodeModule.CountOfLines)
+
+            # Add new code
+            if code.strip():
+                module.CodeModule.AddFromString(code)
+
+            logger.info(f"Updated module: {name}")
+
+        except Exception as e:
+            raise VBAError(f"Failed to update module {name}") from e
+
+    def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
+        """Override to maintain database connection after export."""
+        super().export_vba(save_metadata, overwrite)
+        # Don't close database after export
+        logger.info("Database remains open for editing")
+
+    def _ensure_connection(self) -> bool:
+        """Ensure database connection is active."""
+        try:
+            if not self._database_open or self.app is None:
+                self._open_document_impl()
+            self._vba_project = self.app.VBE.ActiveVBProject
+            return True
+        except Exception as e:
+            logger.error(f"Lost database connection: {str(e)}")
+            return False
+
+    def update_vba_component(self, name: str, content: str) -> None:
+        """Update VBA component with connection recovery."""
+        try:
+            if not self._ensure_connection():
+                raise VBAError("Cannot update VBA - database connection lost")
+
+            component = self._vba_project.VBComponents(name)
+            component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
+            component.CodeModule.AddFromString(content)
+            logger.info(f"Updated VBA component: {name}")
+
+        except Exception as e:
+            logger.error(f"Failed to update VBA component {name}: {str(e)}")
+            raise VBAError(f"Failed to update VBA component {name}") from e

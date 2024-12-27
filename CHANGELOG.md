@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- basic support for access databases (currently only commands ``export|import`` for standard modules ``*.bas`` and class modules ``*.cls`` are supported)
 - ``--save-headers`` command-line option, supporting a comprehensive handling of headers (Issue #11)
 - new files created in ``--vba-directory`` are now automatically synced back to MS Office VBA editor in ``*-vba edit`` mode (previously, only file deletions were monitored and synced)
-
+- tests for utils.py and office_vba.py
 <!-- ### Changed -->
 <!-- -  -->
 
