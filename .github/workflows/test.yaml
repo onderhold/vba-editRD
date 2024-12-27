@@ -31,4 +31,4 @@ jobs:
 
       - name: Run Pytest
         run: |
-          pytest "not integration"
+          pytest -m "not integration"
