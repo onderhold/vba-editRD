@@ -1,17 +1,25 @@
-import pytest
-from pathlib import Path
+"""Tests for Office VBA handling."""
+
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-from vba_edit.utils import detect_vba_encoding, VBAFileChangeHandler, EncodingError, is_office_app_installed
+import pytest
+
 from vba_edit.office_vba import (
-    VBAModuleType,
-    VBAComponentHandler,
-    WordVBAHandler,
-    ExcelVBAHandler,
-    VBAAccessError,
     DocumentClosedError,
+    ExcelVBAHandler,
     RPCError,
+    VBAAccessError,
+    VBAComponentHandler,
+    VBAModuleType,
+    WordVBAHandler,
+)
+from vba_edit.utils import (
+    EncodingError,
+    VBAFileChangeHandler,
+    detect_vba_encoding,
+    is_office_app_installed,
 )
 
 
