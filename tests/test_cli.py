@@ -174,7 +174,7 @@ class TestCLICommon:
             ["import", "-f", f"nonexistent{extension}"],
             "not found",  # Generic error message that works for all Office apps
         )
-
+    @pytest.mark.integration
     @pytest.mark.com  # Mark tests that require COM initialization
     def test_directory_creation(self, vba_app, tmp_path):
         """Test VBA directory creation with test document."""
