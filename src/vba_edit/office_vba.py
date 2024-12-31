@@ -60,9 +60,13 @@ OFFICE_MACRO_EXTENSIONS: Dict[str, str] = {
 OFFICE_CLI_NAMES = {app: f"{app}-vba" for app in OFFICE_MACRO_EXTENSIONS.keys()}
 
 # Currently supported apps in vba-edit
-# "access" is only partially supported and will be included
+# "access" is only partially supported at this stage and will be included
 # in list as soon as tests are adapted to handle it
-SUPPORTED_APPS = ["word", "excel"]
+SUPPORTED_APPS = [
+    "word",
+    "excel",
+    # "access",
+]
 
 
 class VBADocumentNames:
@@ -743,6 +747,7 @@ class OfficeVBAHandler(ABC):
         try:
             info = self.component_handler.get_component_info(component)
             name = info["name"]
+            logger.debug(f"Exporting component {name} with save_headers={self.save_headers}")
             temp_file = directory / f"{name}.tmp"
 
             # Handle form binary if needed
@@ -1272,20 +1277,14 @@ class AccessVBAHandler(OfficeVBAHandler):
         doc_path: Path,
         vba_dir: Optional[Path] = None,
         encoding: str = "cp1252",
-        save_headers: bool = True,
-        verbose: bool = False,
+        verbose: bool = False,     # Match parent class order
+        save_headers: bool = False,
     ) -> None:
-        """Initialize Access VBA handler.
-
-        Args:
-            doc_path: Path to Access database
-            vba_dir: Directory for VBA files
-            encoding: Character encoding for VBA files
-            save_headers: Whether to save VBA component headers
-            verbose: Enable verbose logging
-        """
-        super().__init__(doc_path, vba_dir, encoding, save_headers, verbose)
+        logger.debug(f"AccessVBAHandler.__init__ called with save_headers={save_headers}")
+        super().__init__(doc_path, vba_dir, encoding, verbose, save_headers)  # Correct order!
         self._database_open = False
+        self._was_already_open = False
+        logger.debug(f"AccessVBAHandler initialized with self.save_headers={self.save_headers}")
 
     @property
     def app_name(self) -> str:
@@ -1304,17 +1303,49 @@ class AccessVBAHandler(OfficeVBAHandler):
     def _open_document_impl(self) -> Any:
         """Implementation-specific document opening for Access."""
         try:
-            logger.debug(f"Opening Access database: {self.doc_path}")
+            # Check if database is already open
+            try:
+                current_db = self.app.CurrentDb()
+                if current_db and str(self.doc_path) == current_db.Name:
+                    logger.debug("Using already open database")
+                    self._database_open = True
+                    self._was_already_open = True
+                    return current_db
+            except Exception:
+                pass
+
+            # Open the database explicitly
+            logger.debug(f"Opening database: {self.doc_path}")
             self.app.OpenCurrentDatabase(str(self.doc_path))
             self._database_open = True
+            self._was_already_open = False
             return self.app.CurrentDb()
+
         except Exception as e:
             self._database_open = False
+            self._was_already_open = False
             error_msg = f"Failed to open database: {self.doc_path}"
             logger.error(f"{error_msg}: {str(e)}")
             if check_rpc_error(e):
                 raise RPCError(self.app_name)
             raise VBAError(error_msg) from e
+
+    def is_document_open(self) -> bool:
+        """Check if the database is still open and accessible."""
+        try:
+            if not self._database_open or self.app is None:
+                return False
+
+            current_db = self.app.CurrentDb()
+            if current_db is None:
+                return False
+
+            return str(self.doc_path) == current_db.Name
+
+        except Exception as e:
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            return False
 
     def save_document(self) -> None:
         """Save changes while keeping database open."""
@@ -1337,7 +1368,7 @@ class AccessVBAHandler(OfficeVBAHandler):
 
     def close_document(self) -> None:
         """Close database explicitly."""
-        if self.app and self._database_open:
+        if self.app and self._database_open and not self._was_already_open:
             try:
                 logger.debug("Closing Access database")
                 self.app.CloseCurrentDatabase()
@@ -1420,10 +1451,19 @@ class AccessVBAHandler(OfficeVBAHandler):
             raise VBAError(f"Failed to update module {name}") from e
 
     def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
-        """Override to maintain database connection after export."""
-        super().export_vba(save_metadata, overwrite)
-        # Don't close database after export
-        logger.info("Database remains open for editing")
+        """Export VBA content from the Access database."""
+        try:
+            super().export_vba(save_metadata, overwrite)
+        finally:
+            if self._database_open and not self._was_already_open:
+                try:
+                    self.app.CloseCurrentDatabase()
+                    self._database_open = False
+                    logger.info("Database has been closed")
+                except Exception as e:
+                    logger.error(f"Error closing database: {str(e)}")
+            elif self._database_open and self._was_already_open:
+                logger.info("Database remains open as it was already open before the operation")
 
     def _ensure_connection(self) -> bool:
         """Ensure database connection is active."""

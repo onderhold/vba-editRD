@@ -179,13 +179,15 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
 
         # Create handler instance
         try:
+            logger.debug(f"Creating AccessVBAHandler with save_headers={getattr(args, 'save_headers', False)}")
             handler = AccessVBAHandler(
                 doc_path=doc_path,
                 vba_dir=args.vba_directory,
                 encoding=encoding,
                 verbose=getattr(args, "verbose", False),
-                save_headers=getattr(args, "save_headers", False),
+                save_headers=getattr(args, "save_headers", False),  # Explicitly log this
             )
+            logger.debug(f"Handler created with save_headers={handler.save_headers}")
         except Exception as e:
             logger.error(f"Failed to initialize Access VBA handler: {str(e)}")
             sys.exit(1)
