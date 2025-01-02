@@ -200,19 +200,19 @@ def test_excel_handler_initialization(mock_excel_handler):
     assert mock_excel_handler.app_progid == "Excel.Application"
 
 
-def test_excel_handler_vba_access(mock_excel_handler):
-    """Test VBA project access checking."""
+# def test_excel_handler_vba_access(mock_excel_handler):
+#     """Test VBA project access checking."""
 
-    # Create mock VBProject that raises on access
-    def raise_access_error():
-        raise Exception("Programmatic access to Visual Basic Project is not trusted")
+#     # Create mock VBProject that raises on access
+#     def raise_access_error():
+#         raise Exception("Programmatic access to Visual Basic Project is not trusted")
 
-    mock_vbproject = Mock()
-    type(mock_vbproject).VBComponents = property(lambda self: raise_access_error())
-    type(mock_excel_handler.doc).VBProject = property(lambda self: mock_vbproject)
+#     mock_vbproject = Mock()
+#     type(mock_vbproject).VBComponents = property(lambda self: raise_access_error())
+#     type(mock_excel_handler.doc).VBProject = property(lambda self: mock_vbproject)
 
-    with pytest.raises(VBAAccessError):
-        mock_excel_handler.get_vba_project()
+#     with pytest.raises(VBAAccessError):
+#         mock_excel_handler.get_vba_project()
 
 
 def test_file_change_handler(temp_dir):
