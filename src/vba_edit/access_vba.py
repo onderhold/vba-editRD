@@ -35,6 +35,7 @@ A command-line tool suite for managing VBA content in MS Access databases.
 
 ACCESS-VBA allows you to edit, import, and export VBA content from Access databases.
 If no file is specified, the tool will attempt to use the currently active Access database.
+If multiple databases are open, you must specify the target database using --file.
 Only standard modules (*.bas) and class modules (*.cls) are supported.
 
 Commands:
@@ -45,7 +46,7 @@ Commands:
 Examples:
     access-vba edit   <--- uses active Access database and current directory for exported 
                           VBA files (*.bas/*.cls) & syncs changes back to the 
-                          active Access database on save
+                          database on save
 
     access-vba import -f "C:/path/to/database.accdb" --vba-directory "path/to/vba/files"
     access-vba export --file "C:/path/to/database.accdb" --encoding cp850 --save-metadata
@@ -56,6 +57,9 @@ IMPORTANT:
 
            [!] This tool requires "Trust access to the VBA project object model" 
                enabled in Access.
+           
+           [!] The database will remain open after operations complete - closing
+               should be done manually through Access.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -64,7 +68,7 @@ IMPORTANT:
 
     # Create parsers for each command with common arguments
     common_args = {
-        "file": (["--file", "-f"], {"help": "Path to Access database (optional, defaults to active database)"}),
+        "file": (["--file", "-f"], {"help": "Path to Access database (required if multiple databases are open)"}),
         "vba_directory": (
             ["--vba-directory"],
             {"help": "Directory to export VBA files to (optional, defaults to current directory)"},
@@ -80,33 +84,33 @@ IMPORTANT:
         ),
     }
 
-    # # Edit command
-    # edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Access database")
-    # encoding_group = edit_parser.add_mutually_exclusive_group()
-    # encoding_group.add_argument(
-    #     "--encoding",
-    #     "-e",
-    #     help=f"Encoding to be used when reading VBA files from Access database (default: {default_encoding})",
-    #     default=default_encoding,
-    # )
-    # encoding_group.add_argument(
-    #     "--detect-encoding",
-    #     "-d",
-    #     action="store_true",
-    #     help="Auto-detect input encoding for VBA files exported from Access database",
-    # )
-    # edit_parser.add_argument(
-    #     "--save-headers",
-    #     action="store_true",
-    #     help="Save VBA component headers to separate .header files (default: False)",
-    # )
+    # Edit command
+    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Access database")
+    encoding_group = edit_parser.add_mutually_exclusive_group()
+    encoding_group.add_argument(
+        "--encoding",
+        "-e",
+        help=f"Encoding to be used when reading VBA files (default: {default_encoding})",
+        default=default_encoding,
+    )
+    encoding_group.add_argument(
+        "--detect-encoding",
+        "-d",
+        action="store_true",
+        help="Auto-detect input encoding for VBA files",
+    )
+    edit_parser.add_argument(
+        "--save-headers",
+        action="store_true",
+        help="Save VBA component headers to separate .header files (default: False)",
+    )
 
     # Import command
     import_parser = subparsers.add_parser("import", help="Import VBA content into Access database")
     import_parser.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when writing VBA files back into Access database (default: {default_encoding})",
+        help=f"Encoding to be used when writing VBA files (default: {default_encoding})",
         default=default_encoding,
     )
 
@@ -122,14 +126,14 @@ IMPORTANT:
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading VBA files from Access database (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files exported from Access database",
+        help="Auto-detect input encoding for VBA files",
     )
     export_parser.add_argument(
         "--save-headers",
@@ -138,11 +142,7 @@ IMPORTANT:
     )
 
     # Add common arguments to all subparsers
-    subparser_list = [
-        # edit_parser,
-        import_parser,
-        export_parser,
-    ]
+    subparser_list = [edit_parser, import_parser, export_parser]
     for subparser in subparser_list:
         for arg_name, (arg_flags, arg_kwargs) in common_args.items():
             subparser.add_argument(*arg_flags, **arg_kwargs)
@@ -150,13 +150,97 @@ IMPORTANT:
     return parser
 
 
+def validate_paths(args: argparse.Namespace) -> None:
+    """Validate file and directory paths from command line arguments.
+
+    Args:
+        args: Command line arguments
+
+    Raises:
+        FileNotFoundError: If specified database file doesn't exist
+    """
+    if args.file and not Path(args.file).exists():
+        raise FileNotFoundError(f"Database not found: {args.file}")
+
+    if args.vba_directory:
+        vba_dir = Path(args.vba_directory)
+        if not vba_dir.exists():
+            logger.info(f"Creating VBA directory: {vba_dir}")
+            vba_dir.mkdir(parents=True, exist_ok=True)
+
+
+def check_multiple_databases(file_path: str = None) -> None:
+    """Check for multiple open databases and handle appropriately.
+
+    Args:
+        file_path: Optional path to specific database file
+
+    Raises:
+        VBAError: If multiple databases are open and no specific file is provided
+    """
+    try:
+        import win32com.client
+
+        app = win32com.client.GetObject("Access.Application")
+        try:
+            # Get current database
+            current_db = app.CurrentDb()
+            if not current_db:
+                # No database open
+                return
+
+            # Check for other open databases using a more reliable method
+            try:
+                current_name = current_db.Name
+                open_dbs = []
+
+                # Check each database connection directly
+                for i in range(app.DBEngine.Workspaces(0).Databases.Count):
+                    try:
+                        db = app.DBEngine.Workspaces(0).Databases(i)
+                        if db and db.Name != current_name:
+                            open_dbs.append(db.Name)
+                    except Exception:
+                        continue
+
+                if open_dbs and not file_path:
+                    raise VBAError(
+                        "Multiple Access databases are open. Please specify the target "
+                        "database using the --file option."
+                    )
+            except AttributeError:
+                # DBEngine or Workspaces not accessible, consider it a single database
+                logger.debug("Could not enumerate databases, assuming single database")
+                return
+
+        except Exception as e:
+            logger.debug(f"Error checking current database: {e}")
+            return
+
+    except Exception:
+        # Only log at debug level since this is a non-critical check
+        logger.debug("Could not check for multiple databases - Access may not be running")
+        return
+
+
 def handle_access_vba_command(args: argparse.Namespace) -> None:
-    """Handle the access-vba command execution."""
+    """Handle the access-vba command execution.
+
+    Args:
+        args: Command line arguments
+    """
     try:
         # Initialize logging
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
         logger.debug(f"Starting access-vba command: {args.command}")
         logger.debug(f"Command arguments: {vars(args)}")
+
+        # Check for multiple open databases
+        try:
+            check_multiple_databases(args.file)
+        except VBAError as e:
+            logger.error(str(e))
+            sys.exit(1)
 
         # Validate paths
         try:
@@ -179,15 +263,13 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
 
         # Create handler instance
         try:
-            logger.debug(f"Creating AccessVBAHandler with save_headers={getattr(args, 'save_headers', False)}")
             handler = AccessVBAHandler(
                 doc_path=doc_path,
                 vba_dir=args.vba_directory,
                 encoding=encoding,
                 verbose=getattr(args, "verbose", False),
-                save_headers=getattr(args, "save_headers", False),  # Explicitly log this
+                save_headers=getattr(args, "save_headers", False),
             )
-            logger.debug(f"Handler created with save_headers={handler.save_headers}")
         except Exception as e:
             logger.error(f"Failed to initialize Access VBA handler: {str(e)}")
             sys.exit(1)
@@ -197,6 +279,7 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
         try:
             if args.command == "edit":
                 print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
+                print("NOTE: The database will remain open - close it manually when finished.")
                 handler.export_vba(overwrite=False)
                 try:
                     handler.watch_changes()
@@ -236,28 +319,12 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
         logger.debug("Command execution completed")
 
 
-def validate_paths(args: argparse.Namespace) -> None:
-    """Validate file and directory paths from command line arguments."""
-    if args.file and not Path(args.file).exists():
-        raise FileNotFoundError(f"Database not found: {args.file}")
-
-    if args.vba_directory:
-        vba_dir = Path(args.vba_directory)
-        if not vba_dir.exists():
-            logger.info(f"Creating VBA directory: {vba_dir}")
-            vba_dir.mkdir(parents=True, exist_ok=True)
-
-
 def main() -> None:
     """Main entry point for the access-vba CLI."""
     try:
         parser = create_cli_parser()
         args = parser.parse_args()
-
-        # Set up logging first
-        setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
         handle_access_vba_command(args)
-
     except Exception as e:
         print(f"Critical error: {str(e)}", file=sys.stderr)
         sys.exit(1)

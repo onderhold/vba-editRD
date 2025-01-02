@@ -524,6 +524,31 @@ class VBAComponentHandler:
 
         return True  # Other types are less strict about headers
 
+    def _update_module_content(self, component: Any, content: str) -> None:
+        """Update the content of an existing module.
+
+        When updating content directly in the VBA editor (without full import),
+        we must not include header information as it can't be processed by
+        the VBA project.
+
+        Args:
+            component: VBA component to update
+            content: New content to set
+        """
+        try:
+            # For direct updates, we want just the code without any header
+            # manipulation - the existing module already has its header
+            if component.CodeModule.CountOfLines > 0:
+                component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
+
+            if content.strip():
+                component.CodeModule.AddFromString(content)
+
+            logger.debug(f"Updated content for: {component.Name}")
+        except Exception as e:
+            logger.error(f"Failed to update content for {component.Name}: {str(e)}")
+            raise VBAError("Failed to update module content") from e
+
 
 class OfficeVBAHandler(ABC):
     """Abstract base class for handling VBA operations across Office applications.
@@ -603,27 +628,33 @@ class OfficeVBAHandler(ABC):
         return "workbook" if self.app_name == "Excel" else "document"
 
     def get_vba_project(self) -> Any:
-        """Get the VBA project from the document.
-
-        Returns:
-            The VBA project object
-
-        Raises:
-            VBAAccessError: If VBA project access is denied
-            VBAError: For other VBA-related errors
-        """
+        """Get VBA project based on application type."""
+        logger.debug("Getting VBA project...")
         try:
-            project = self.doc.VBProject
-            # Verify access by attempting to get components
-            _ = project.VBComponents
-            return project
+            if self.app_name == "Access":
+                # Access uses VBE.ActiveVBProject
+                vba_project = self.app.VBE.ActiveVBProject
+            else:
+                # Word/Excel use doc.VBProject
+                vba_project = self.doc.VBProject
+
+            if vba_project is None:
+                raise VBAAccessError(
+                    "Cannot access VBA project. Please ensure 'Trust access to the VBA "
+                    "project object model' is enabled in Trust Center Settings."
+                )
+            else:
+                logger.debug("VBA project accessed successfully")
+            return vba_project
+
         except Exception as e:
-            error_msg = (
+            logger.error(f"Failed to access VBA project: {str(e)}")
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            raise VBAAccessError(
                 "Cannot access VBA project. Please ensure 'Trust access to the VBA "
                 "project object model' is enabled in Trust Center Settings."
-            )
-            logger.error(f"{error_msg}: {str(e)}")
-            raise VBAAccessError(error_msg) from e
+            ) from e
 
     @abstractmethod
     def get_document_module_name(self) -> str:
@@ -737,7 +768,7 @@ class OfficeVBAHandler(ABC):
             raise VBAError(error_msg) from e
 
     def export_component(self, component: Any, directory: Path) -> None:
-        """Export a VBA component as separate header and code files.
+        """Export a single VBA component.
 
         Args:
             component: VBA component to export
@@ -745,31 +776,35 @@ class OfficeVBAHandler(ABC):
         """
         temp_file = None
         try:
+            logger.debug(f"Starting component export for {component.Name}")
             info = self.component_handler.get_component_info(component)
             name = info["name"]
             logger.debug(f"Exporting component {name} with save_headers={self.save_headers}")
             temp_file = directory / f"{name}.tmp"
 
-            # Handle form binary if needed
-            if info["type"] == VBATypes.VBEXT_CT_MSFORM:
-                self._handle_form_binary_export(name)
-
             # Export to temp file
+            logger.debug("About to call component.Export")
             component.Export(str(temp_file))
+            logger.debug("Component.Export completed")
 
             # Read and process content
             with open(temp_file, "r", encoding=self.encoding) as f:
                 content = f.read()
 
-            # Split content and handle document module special case
+            # Split content
             header, code = self.component_handler.split_vba_content(content)
-            #            if info["type"] == VBATypes.VBEXT_CT_DOCUMENT:
-            #               header = ""  # Strip header for document modules during export
 
             # Write files
             self._write_component_files(name, header, code, info, directory)
+            logger.debug(f"Component files written for {name}")
 
             logger.info(f"Exported: {name}")
+
+            # Verify document is still open
+            if self.app_name == "Access":
+                logger.debug("Verifying Access is still running")
+                _ = self.app.CurrentDb()
+                logger.debug("Access verified still running after export")
 
         except Exception as e:
             logger.error(f"Failed to export component {component.Name}: {str(e)}")
@@ -782,64 +817,133 @@ class OfficeVBAHandler(ABC):
                     pass
 
     def import_component(self, file_path: Path, components: Any) -> None:
-        """Import a VBA component with proper header handling.
+        """Import a VBA component with app-specific handling.
+
+        This method handles both new module creation and updates to existing modules.
+        For updates, it will prefer in-place content updates where possible, only doing
+        full imports when required by specific applications or module types.
 
         Args:
             file_path: Path to the code file
             components: VBA components collection
+
+        Raises:
+            VBAError: If component import fails
         """
-        temp_file = None
         try:
             name = file_path.stem
             module_type = self.component_handler.get_module_type(file_path)
 
-            # Handle form binaries for UserForms
-            if module_type == VBAModuleType.FORM:
-                self._handle_form_binary_import(name)
+            logger.debug(f"Processing module: {name} (Type: {module_type})")
 
-            # Read content
-            header = self._read_header_file(file_path)
+            # Read code file
             code = self._read_code_file(file_path)
 
-            # Special handling for document modules
+            # Handle based on module type
             if module_type == VBAModuleType.DOCUMENT:
+                logger.debug(f"Updating document module: {name}")
                 self._update_document_module(name, code, components)
                 return
 
-            # Get minimal header information for class modules and forms if no header provided
-            if not header and module_type in [VBAModuleType.CLASS, VBAModuleType.FORM]:
-                header = self.component_handler.create_minimal_header(name, module_type)
-                logger.debug(f"Created minimal header for {name}")
-
-            # Prepare content for import
-            content = self.component_handler.prepare_import_content(name, module_type, header, code)
-
-            # Create temp file for import
-            temp_file = file_path.with_suffix(".tmp")
-            with open(temp_file, "w", encoding=self.encoding) as f:
-                f.write(content)
-
-            # Remove existing component if present
             try:
-                existing = components(name)
-                components.Remove(existing)
-                logger.debug(f"Removed existing component: {name}")
-            except Exception:
-                logger.debug(f"No existing component to remove: {name}")
+                # Try to get existing component
+                component = components(name)
 
-            # Import component
-            components.Import(str(temp_file))
-            logger.info(f"Imported: {file_path.name}")
+                if self._should_force_import(module_type):
+                    # Remove and reimport if required
+                    logger.debug(f"Forcing full import for: {name}")
+                    components.Remove(component)
+                    self._import_new_module(name, code, module_type, components)
+                else:
+                    # Update existing module content in-place
+                    logger.debug(f"Updating existing component: {name}")
+                    self._update_module_content(component, code)
+
+            except Exception:
+                # Component doesn't exist, create new
+                logger.debug(f"Creating new module: {name}")
+                # For new modules, we need header information
+                header = self._read_header_file(file_path)
+                if not header and module_type in [VBAModuleType.CLASS, VBAModuleType.FORM]:
+                    header = self.component_handler.create_minimal_header(name, module_type)
+                    logger.debug(f"Created minimal header for new module: {name}")
+
+                # Prepare content for new module
+                content = self.component_handler.prepare_import_content(name, module_type, header, code)
+                self._import_new_module(name, content, module_type, components)
+
+            # Handle any form binaries if needed
+            if module_type == VBAModuleType.FORM:
+                self._handle_form_binary_import(name)
+
+            logger.info(f"Successfully processed: {file_path.name}")
+
+            # Only try to save for non-Access applications
+            if self.app_name != "Access":
+                self.save_document()
 
         except Exception as e:
-            logger.error(f"Failed to import {file_path.name}: {str(e)}")
-            raise VBAError(f"Failed to import {file_path.name}") from e
-        finally:
-            if temp_file and temp_file.exists():
-                try:
-                    temp_file.unlink()
-                except OSError:
-                    pass
+            logger.error(f"Failed to handle {file_path.name}: {str(e)}")
+            raise VBAError(f"Failed to handle {file_path.name}") from e
+
+    def _should_force_import(self, module_type: VBAModuleType) -> bool:
+        """Determine if a module type requires full import instead of content update.
+
+        Override in app-specific handlers if needed.
+
+        Args:
+            module_type: Type of the VBA module
+
+        Returns:
+            bool: True if module should be removed and reimported
+        """
+        # By default, only force import for forms
+        return module_type == VBAModuleType.FORM
+
+    def _import_new_module(self, name: str, content: str, module_type: VBAModuleType, components: Any) -> None:
+        """Create and import a new module.
+
+        Args:
+            name: Name of the module
+            content: Module content
+            module_type: Type of the VBA module
+            components: VBA components collection
+        """
+        # Create appropriate module type
+        if module_type == VBAModuleType.CLASS:
+            component = components.Add(VBATypes.VBEXT_CT_CLASSMODULE)
+        elif module_type == VBAModuleType.FORM:
+            component = components.Add(VBATypes.VBEXT_CT_MSFORM)
+        else:  # Standard module
+            component = components.Add(VBATypes.VBEXT_CT_STDMODULE)
+
+        component.Name = name
+        self._update_module_content(component, content)
+
+    def _update_module_content(self, component: Any, content: str) -> None:
+        """Update the content of an existing module.
+
+        When updating content directly in the VBA editor (without full import),
+        we must not include header information as it can't be processed by
+        the VBA project.
+
+        Args:
+            component: VBA component to update
+            content: New content to set
+        """
+        try:
+            # For direct updates, we want just the code without any header
+            # manipulation - the existing module already has its header
+            if component.CodeModule.CountOfLines > 0:
+                component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
+
+            if content.strip():
+                component.CodeModule.AddFromString(content)
+
+            logger.debug(f"Updated content for: {component.Name}")
+        except Exception as e:
+            logger.error(f"Failed to update content for {component.Name}: {str(e)}")
+            raise VBAError("Failed to update module content") from e
 
     @abstractmethod
     def _handle_form_binary_export(self, name: str) -> None:
@@ -1025,8 +1129,9 @@ class OfficeVBAHandler(ABC):
             # Import the component
             self.import_component(file_path, components)
 
-            # Save after successful import
-            self.doc.Save()
+            # Only try to save for non-Access applications
+            if self.app_name != "Access":
+                self.doc.Save()
 
         except (DocumentClosedError, RPCError):
             raise
@@ -1035,20 +1140,22 @@ class OfficeVBAHandler(ABC):
             raise VBAError(f"Failed to import {file_path.name}") from e
 
     def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
-        """Export VBA content from the Office document.
+        """Export VBA modules to files.
 
         Args:
-            save_metadata: Whether to save metadata about the export
+            save_metadata: Whether to save encoding metadata
             overwrite: Whether to overwrite existing files
-
-        Raises:
-            VBAError: If operation fails or if UserForms found without headers enabled
         """
+        logger.debug("Starting export_vba operation")
         try:
-            self.open_document()
-            vba_project = self.get_vba_project()
-            components = vba_project.VBComponents
+            # Ensure document is open
+            if not self.is_document_open():
+                logger.debug("Document not open, opening...")
+                self.open_document()
 
+            vba_project = self.get_vba_project()
+
+            components = vba_project.VBComponents
             if not components.Count:
                 logger.info(f"No VBA components found in the {self.document_type}.")
                 return
@@ -1063,21 +1170,16 @@ class OfficeVBAHandler(ABC):
             for comp in component_list:
                 logger.info(f"  - {comp['name']} ({comp['type_name']}, {comp['code_lines']} lines)")
 
-            encoding_data = {}
-
             # Export components
+            encoding_data = {}
             for component in components:
                 try:
-                    # Skip if file exists and we're not overwriting
                     info = self.component_handler.get_component_info(component)
                     final_file = self.vba_dir / f"{info['name']}{info['extension']}"
 
                     if not overwrite and final_file.exists():
-                        if (
-                            info["type"] != VBATypes.VBEXT_CT_DOCUMENT  # Not doc module
-                            or (
-                                info["type"] == VBATypes.VBEXT_CT_DOCUMENT and info["code_lines"] == 0
-                            )  # Empty doc module
+                        if info["type"] != VBATypes.VBEXT_CT_DOCUMENT or (
+                            info["type"] == VBATypes.VBEXT_CT_DOCUMENT and info["code_lines"] == 0
                         ):
                             logger.debug(f"Skipping existing file: {final_file}")
                             continue
@@ -1089,26 +1191,19 @@ class OfficeVBAHandler(ABC):
                     logger.error(f"Failed to export component {component.Name}: {str(e)}")
                     continue
 
+            # Save metadata if requested
             if save_metadata:
+                logger.debug("Saving metadata...")
                 self._save_metadata(encoding_data)
+                logger.debug("Metadata saved")
 
-            # Small delay to ensure all files are written
-            time.sleep(0.5)
-
-            # Safety check for forms after export
-            if not self.app_name == "Access":
-                self._check_form_safety(self.vba_dir)
-                logger.debug(f"Running form safety check with save_headers={self.save_headers}")
-
-            # Open directory in explorer
-            os.startfile(self.vba_dir)
+            # Show exported files to user (do this last!)
+            os.startfile(str(self.vba_dir.resolve()))
 
         except Exception as e:
             error_msg = "Failed to export VBA content"
             logger.error(f"{error_msg}: {str(e)}")
             raise VBAError(error_msg) from e
-        finally:
-            self.save_document()
 
 
 class WordVBAHandler(OfficeVBAHandler):
@@ -1263,28 +1358,57 @@ class ExcelVBAHandler(OfficeVBAHandler):
 class AccessVBAHandler(OfficeVBAHandler):
     """Microsoft Access specific implementation of VBA operations.
 
-    Provides Access-specific implementations of abstract methods from OfficeVBAHandler.
-    Currently only supports Standard (.bas) and Class (.cls) modules.
+    Handles Access-specific implementations for VBA module management, with special
+    consideration for Access's unique behaviors around database and VBA project handling.
 
-    The handler manages operations like:
-    - Importing/exporting VBA modules
-    - Managing module types specific to Access
-    - Monitoring file changes
+    Access differs from Word/Excel in several ways:
+    - Uses VBE.ActiveVBProject instead of doc.VBProject
+    - No document module equivalent (like ThisDocument/ThisWorkbook)
+    - Different handling of database connections and saving
+    - Forms handled differently (not supported in VBA editing)
     """
 
     def __init__(
         self,
-        doc_path: Path,
-        vba_dir: Optional[Path] = None,
+        doc_path: str,
+        vba_dir: Optional[str] = None,
         encoding: str = "cp1252",
-        verbose: bool = False,     # Match parent class order
+        verbose: bool = False,
         save_headers: bool = False,
-    ) -> None:
-        logger.debug(f"AccessVBAHandler.__init__ called with save_headers={save_headers}")
-        super().__init__(doc_path, vba_dir, encoding, verbose, save_headers)  # Correct order!
-        self._database_open = False
-        self._was_already_open = False
-        logger.debug(f"AccessVBAHandler initialized with self.save_headers={self.save_headers}")
+    ):
+        """Initialize the Access VBA handler.
+
+        Args:
+            doc_path: Path to the Access database
+            vba_dir: Directory for VBA files (defaults to current directory)
+            encoding: Character encoding for VBA files (default: cp1252)
+            verbose: Enable verbose logging
+            save_headers: Whether to save VBA component headers to separate files
+        """
+        # First call parent's init to properly set all attributes
+        super().__init__(doc_path, vba_dir, encoding, verbose, save_headers)
+
+        # Then handle Access-specific initialization
+        try:
+            # Try to get running instance first
+            app = win32com.client.GetObject("Access.Application")
+            try:
+                current_db = app.CurrentDb()
+                if current_db and str(self.doc_path) == current_db.Name:
+                    logger.debug("Using already open database")
+                    self.app = app
+                    self.doc = current_db
+                    return
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # If we get here, we need to initialize a new instance
+        logger.debug("No existing database connection found, initializing new instance")
+        self.initialize_app()
+        self.doc = self._open_document_impl()
+        logger.debug("Database opened successfully")
 
     @property
     def app_name(self) -> str:
@@ -1298,195 +1422,134 @@ class AccessVBAHandler(OfficeVBAHandler):
 
     @property
     def document_type(self) -> str:
+        """Document type string for error messages."""
         return "database"
 
     def _open_document_impl(self) -> Any:
-        """Implementation-specific document opening for Access."""
+        """Open database in Access with proper error handling.
+
+        Returns:
+            The current database object
+
+        Raises:
+            RPCError: If connection to Access is lost
+            VBAError: For other database access errors
+        """
         try:
             # Check if database is already open
             try:
                 current_db = self.app.CurrentDb()
                 if current_db and str(self.doc_path) == current_db.Name:
                     logger.debug("Using already open database")
-                    self._database_open = True
-                    self._was_already_open = True
                     return current_db
             except Exception:
-                pass
+                pass  # Handle case where no database is open
 
-            # Open the database explicitly
             logger.debug(f"Opening database: {self.doc_path}")
             self.app.OpenCurrentDatabase(str(self.doc_path))
-            self._database_open = True
-            self._was_already_open = False
             return self.app.CurrentDb()
 
         except Exception as e:
-            self._database_open = False
-            self._was_already_open = False
-            error_msg = f"Failed to open database: {self.doc_path}"
-            logger.error(f"{error_msg}: {str(e)}")
             if check_rpc_error(e):
-                raise RPCError(self.app_name)
-            raise VBAError(error_msg) from e
-
-    def is_document_open(self) -> bool:
-        """Check if the database is still open and accessible."""
-        try:
-            if not self._database_open or self.app is None:
-                return False
-
-            current_db = self.app.CurrentDb()
-            if current_db is None:
-                return False
-
-            return str(self.doc_path) == current_db.Name
-
-        except Exception as e:
-            if check_rpc_error(e):
-                raise RPCError(self.app_name)
-            return False
-
-    def save_document(self) -> None:
-        """Save changes while keeping database open."""
-        if self.doc and self.app and self._database_open:
-            if not self._ensure_connection():
-                raise VBAError("Cannot verify database state - connection lost")
-            logger.info("Database connection verified")
-            try:
-                logger.debug("Saving Access database")
-                # Access doesn't need explicit save - changes are auto-committed
-                # Just verify connection is still active
-                _ = self.app.CurrentDb()
-                logger.info("Database connection verified")
-            except Exception as e:
-                error_msg = "Failed to save database"
-                logger.error(f"{error_msg}: {str(e)}")
-                if check_rpc_error(e):
-                    raise RPCError(self.app_name)
-                raise VBAError(error_msg) from e
-
-    def close_document(self) -> None:
-        """Close database explicitly."""
-        if self.app and self._database_open and not self._was_already_open:
-            try:
-                logger.debug("Closing Access database")
-                self.app.CloseCurrentDatabase()
-                self._database_open = False
-            except Exception as e:
-                logger.error(f"Error closing database: {str(e)}")
-
-    def __del__(self):
-        """Cleanup handler."""
-        try:
-            self.close_document()
-        except Exception as e:
-            logger.error(f"Error during cleanup: {str(e)}")
-
-    def get_vba_project(self) -> Any:
-        """Get VBA project for Access database."""
-        try:
-            vba_project = self.app.VBE.ActiveVBProject
-            if vba_project is None:
-                raise VBAAccessError(
-                    "Cannot access VBA project. Please ensure 'Trust access to the VBA "
-                    "project object model' is enabled in Trust Center Settings."
+                raise RPCError(
+                    "\nLost connection to Access. The operation will be terminated.\n"
+                    "This typically happens if Access was closed via the UI.\n"
+                    "To continue:\n"
+                    "1. Start Access\n"
+                    "2. Run the access-vba command again"
                 )
-            return vba_project
-        except Exception as e:
-            logger.error(f"Failed to access VBA project: {str(e)}")
-            if check_rpc_error(e):
-                raise RPCError(self.app_name)
-            raise VBAAccessError(
-                "Cannot access VBA project. Please ensure 'Trust access to the VBA "
-                "project object model' is enabled in Trust Center Settings."
-            ) from e
+            raise VBAError(f"Failed to open database: {str(e)}") from e
 
     def get_document_module_name(self) -> str:
-        """Get the name of the document module."""
-        """
-        Access does not have an equivalent document module.
+        """Get the name of the document module.
+
+        Access databases don't have an equivalent to Word's ThisDocument
+        or Excel's ThisWorkbook, so this returns an empty string.
         """
         return ""
 
-    def initialize_app(self) -> None:
-        """Initialize the Access application."""
-        try:
-            if self.app is None:
-                logger.debug("Initializing Access application")
-                self.app = win32com.client.Dispatch(self.app_progid)
-                # Remove Visible=True setting
-        except Exception as e:
-            error_msg = "Failed to initialize Access application"
-            logger.error(f"{error_msg}: {str(e)}")
-            raise VBAError(error_msg) from e
-
     def _handle_form_binary_export(self, name: str) -> None:
-        """Handle form binary export for Access."""
-        # Not needed as forms are not supported
+        """Handle form binary export for Access.
+
+        Forms in Access are fundamentally different from Word/Excel UserForms
+        and are not supported in VBA editing.
+        """
+        logger.debug("Form binary export not supported in Access")
         pass
 
     def _handle_form_binary_import(self, name: str) -> None:
-        """Handle form binary import for Access."""
-        # Forms are not supported in Access, so this method is not needed.
+        """Handle form binary import for Access.
+
+        Forms in Access are fundamentally different from Word/Excel UserForms
+        and are not supported in VBA editing.
+        """
+        logger.debug("Form binary import not supported in Access")
         pass
 
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
-        """Update a module in Access."""
+        """Update module code in Access.
+
+        Access doesn't have document modules like Word/Excel, but we still need this
+        method for the interface. For Access, we'll use it to update any module's content.
+
+        Args:
+            name: Name of the module
+            code: New code to insert
+            components: VBA components collection
+
+        Raises:
+            VBAError: If module update fails
+        """
         try:
-            # Get existing module
-            module = components(name)
+            component = components(name)
 
             # Clear existing code
-            if module.CodeModule.CountOfLines > 0:
-                module.CodeModule.DeleteLines(1, module.CodeModule.CountOfLines)
+            if component.CodeModule.CountOfLines > 0:
+                component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
 
-            # Add new code
+            # Add new code if not empty
             if code.strip():
-                module.CodeModule.AddFromString(code)
+                component.CodeModule.AddFromString(code)
 
-            logger.info(f"Updated module: {name}")
+            logger.info(f"Updated module content: {name}")
 
         except Exception as e:
             raise VBAError(f"Failed to update module {name}") from e
 
-    def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
-        """Export VBA content from the Access database."""
-        try:
-            super().export_vba(save_metadata, overwrite)
-        finally:
-            if self._database_open and not self._was_already_open:
-                try:
-                    self.app.CloseCurrentDatabase()
-                    self._database_open = False
-                    logger.info("Database has been closed")
-                except Exception as e:
-                    logger.error(f"Error closing database: {str(e)}")
-            elif self._database_open and self._was_already_open:
-                logger.info("Database remains open as it was already open before the operation")
+    def save_document(self) -> None:
+        """Handle saving in Access.
 
-    def _ensure_connection(self) -> bool:
-        """Ensure database connection is active."""
+        Access VBA projects save automatically when modules are modified.
+        We only verify the database is still accessible and log appropriately.
+        """
         try:
-            if not self._database_open or self.app is None:
-                self._open_document_impl()
-            self._vba_project = self.app.VBE.ActiveVBProject
-            return True
+            if self.doc is not None:
+                # Just verify database is still open/accessible
+                _ = self.app.CurrentDb()
+                logger.debug("Database verified accessible - Access auto-saves changes")
         except Exception as e:
-            logger.error(f"Lost database connection: {str(e)}")
-            return False
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            # Don't raise other errors - Access handles saving automatically
 
-    def update_vba_component(self, name: str, content: str) -> None:
-        """Update VBA component with connection recovery."""
+    def is_document_open(self) -> bool:
+        """Check if the database is still open and accessible.
+
+        Returns:
+            bool: True if database is open and accessible
+
+        Raises:
+            RPCError: If connection to Access is lost
+            DocumentClosedError: If database is closed
+        """
         try:
-            if not self._ensure_connection():
-                raise VBAError("Cannot update VBA - database connection lost")
+            if self.doc is None:
+                return False
 
-            component = self._vba_project.VBComponents(name)
-            component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
-            component.CodeModule.AddFromString(content)
-            logger.info(f"Updated VBA component: {name}")
+            current_db = self.app.CurrentDb()
+            return current_db and str(self.doc_path) == current_db.Name
 
         except Exception as e:
-            logger.error(f"Failed to update VBA component {name}: {str(e)}")
-            raise VBAError(f"Failed to update VBA component {name}") from e
+            if check_rpc_error(e):
+                raise RPCError(self.app_name)
+            raise DocumentClosedError(self.document_type)
