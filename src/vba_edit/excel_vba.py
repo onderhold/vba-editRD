@@ -7,14 +7,19 @@ from pathlib import Path
 
 from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
-from vba_edit.utils import setup_logging, get_document_path, get_windows_ansi_codepage
-from vba_edit.office_vba import (
-    ExcelVBAHandler,
+from vba_edit.exceptions import (
+    ApplicationError,
+    DocumentClosedError,
+    DocumentNotFoundError,
+    PathError,
     VBAError,
     VBAAccessError,
-    DocumentClosedError,
     RPCError,
 )
+from vba_edit.office_vba import ExcelVBAHandler
+from vba_edit.path_utils import get_document_paths
+from vba_edit.utils import setup_logging, get_windows_ansi_codepage, get_active_office_document
+
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -42,6 +47,7 @@ Commands:
     edit    Edit VBA content in Excel workbook
     import  Import VBA content into Excel workbook
     export  Export VBA content from Excel workbook
+    check   Check if 'Trust access to the VBA project object model' is enabled in MS Excel
 
 Examples:
     excel-vba edit   <--- uses active Excel workbook and current directory for exported 
@@ -148,7 +154,27 @@ IMPORTANT:
         action="store_true",
         help="Save VBA component headers to separate .header files (default: False)",
     )
-    # Add common arguments to all subparsers
+
+    # Check command
+    check_parser = subparsers.add_parser(
+        "check",
+        help="Check if 'Trust Access to the MS Excel VBA project object model' is enabled",
+    )
+    check_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose logging output",
+    )
+    check_parser.add_argument(
+        "--logfile",
+        "-l",
+        nargs="?",
+        const="vba_edit.log",
+        help="Enable logging to file. Optional path can be specified (default: vba_edit.log)",
+    )
+
+    # Add common arguments to all subparsers (except check command)
     subparser_list = [edit_parser, import_parser, export_parser]
     for subparser in subparser_list:
         for arg_name, (arg_flags, arg_kwargs) in common_args.items():
@@ -165,19 +191,31 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         logger.debug(f"Starting excel-vba command: {args.command}")
         logger.debug(f"Command arguments: {vars(args)}")
 
-        # Validate paths
-        try:
-            validate_paths(args)
-        except FileNotFoundError as e:
-            logger.error(str(e))
-            sys.exit(1)
+        # Handle xlwings option if present
+        if args.xlwings:
+            try:
+                import xlwings
 
-        # Get document path
+                logger.info(f"Using xlwings {xlwings.__version__}")
+                handle_xlwings_command(args)
+                return
+            except ImportError:
+                sys.exit("xlwings is not installed. Please install it with: pip install xlwings")
+
+        # Get document path and active document path
+        active_doc = None
+        if not args.file:
+            try:
+                active_doc = get_active_office_document("excel")
+            except ApplicationError:
+                pass
+
         try:
-            doc_path = get_document_path(file_path=args.file, app_type="excel")
+            doc_path, vba_dir = get_document_paths(args.file, active_doc, args.vba_directory)
             logger.info(f"Using workbook: {doc_path}")
-        except Exception as e:
-            logger.error(f"Failed to get workbook path: {str(e)}")
+            logger.debug(f"Using VBA directory: {vba_dir}")
+        except (DocumentNotFoundError, PathError) as e:
+            logger.error(f"Failed to resolve paths: {str(e)}")
             sys.exit(1)
 
         # Determine encoding
@@ -187,13 +225,13 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         # Create handler instance
         try:
             handler = ExcelVBAHandler(
-                doc_path=doc_path,
-                vba_dir=args.vba_directory,
+                doc_path=str(doc_path),
+                vba_dir=str(vba_dir),
                 encoding=encoding,
                 verbose=getattr(args, "verbose", False),
                 save_headers=getattr(args, "save_headers", False),
             )
-        except Exception as e:
+        except VBAError as e:
             logger.error(f"Failed to initialize Excel VBA handler: {str(e)}")
             sys.exit(1)
 
@@ -201,9 +239,7 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         logger.info(f"Executing command: {args.command}")
         try:
             if args.command == "edit":
-                # Display warning about module deletion
                 print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
-                # For edit command, first export without overwriting
                 handler.export_vba(overwrite=False)
                 try:
                     handler.watch_changes()
@@ -214,7 +250,6 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
             elif args.command == "import":
                 handler.import_vba()
             elif args.command == "export":
-                # For export command, always overwrite
                 handler.export_vba(save_metadata=getattr(args, "save_metadata", False), overwrite=True)
         except (DocumentClosedError, RPCError) as e:
             logger.error(str(e))
@@ -299,8 +334,18 @@ def main() -> None:
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 
+        # Run 'check' command (Check Trust Access to the VBA project object model)
+        if args.command == "check":
+            try:
+                from vba_edit.utils import check_vba_trust_access
+
+                check_vba_trust_access("excel")
+            except Exception as e:
+                logger.error(f"Failed to check Trust Access to MS Excel VBA project object model: {str(e)}")
+            sys.exit(0)
+
         # If xlwings option is used, check dependency before proceeding
-        if args.xlwings:
+        elif args.xlwings:
             try:
                 import xlwings
 

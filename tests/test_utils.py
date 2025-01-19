@@ -7,27 +7,35 @@ from unittest.mock import Mock, patch
 import pytest
 from pywintypes import com_error as COM_ERROR
 
-from vba_edit.utils import (
-    detect_vba_encoding,
-    get_document_path,
-    is_office_app_installed,
-    VBAFileChangeHandler,
-    DocumentNotFoundError,
-    EncodingError,
-)
+from vba_edit.exceptions import DocumentNotFoundError, EncodingError
+from vba_edit.path_utils import get_document_paths
+from vba_edit.utils import detect_vba_encoding, is_office_app_installed, VBAFileChangeHandler
 
 
-def test_get_document_path():
+def test_get_document_paths(tmp_path):
     """Test document path resolution with different inputs."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Test with explicit file path
-        test_doc = Path(tmpdir) / "test.docm"
-        test_doc.touch()
-        assert str(test_doc.resolve()) == get_document_path(str(test_doc))
+    # Test with explicit file path
+    test_doc = tmp_path / "test.docm"
+    test_doc.touch()
 
-        # Test with nonexistent file
-        with pytest.raises(DocumentNotFoundError):
-            get_document_path("nonexistent.docm")
+    # Test successful path resolution
+    doc_path, vba_dir = get_document_paths(str(test_doc), None)
+    assert doc_path == test_doc.resolve()
+    assert vba_dir == test_doc.parent.resolve()
+
+    # Test with custom VBA directory
+    vba_path = tmp_path / "vba_files"
+    doc_path, vba_dir = get_document_paths(str(test_doc), None, str(vba_path))
+    assert vba_dir == vba_path.resolve()
+    assert vba_dir.exists()
+
+    # Test with nonexistent file
+    with pytest.raises(DocumentNotFoundError, match="Document not found"):
+        get_document_paths("nonexistent.docm", None)
+
+    # Test with no paths provided
+    with pytest.raises(DocumentNotFoundError, match="No valid document path"):
+        get_document_paths(None, None)
 
 
 def test_is_office_app_installed_validation():

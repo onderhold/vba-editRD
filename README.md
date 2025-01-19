@@ -38,6 +38,9 @@ Enable "Trust access to the VBA project object model" in your Office application
 3. Select "Macro Settings"
 4. Check "Trust access to the VBA project object model"
 
+> [!NOTE]
+> In MS Access, Trust Access to VBA project object model is always enabled if database is stored in trusted location.
+
 ### Basic Usage
 
 #### Excel Example
@@ -56,13 +59,13 @@ excel-vba edit
 
 ```bash
 # Export VBA modules from active document
-word-vba export --vba-directory ./src
+word-vba export --vba-directory ./VBA
 
 # Edit and sync changes automatically
-word-vba edit --vba-directory ./src
+word-vba edit --vba-directory ./VBA
 
 # Import changes back to document
-word-vba import --vba-directory ./src
+word-vba import --vba-directory ./VBA
 ```
 
 #### Access Example
@@ -97,6 +100,7 @@ Each tool supports three main commands:
 - `edit`: Live sync between editor and Office (Word/Excel only)
 - `export`: Export VBA modules to files
 - `import`: Import VBA modules from files
+- `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
 ### Common Options
 
@@ -129,8 +133,9 @@ excel-vba edit -x  # Use xlwings wrapper
 ## Known Limitations
 
 - Access support is limited to import/export (no live editing)
-- PowerPoint support coming in v0.4.0
 - UserForms require `--save-headers` option
+- PowerPoint support coming in v0.4.0
+- `--in-file-headers` option coming soon
 
 ## Links
 
@@ -138,7 +143,8 @@ excel-vba edit -x  # Use xlwings wrapper
 - [Documentation](https://github.com/markuskiller/vba-edit/blob/main/README.md)
 - [Source Code](https://github.com/markuskiller/vba-edit)
 - [Changelog](https://github.com/markuskiller/vba-edit/blob/main/CHANGELOG.md)
-- [Video Tutorial](https://www.youtube.com/watch?v=xoO-Fx0fTpM) (xlwings walkthrough, but similar functionality)
+- [Changelog of latest dev version](https://github.com/markuskiller/vba-edit/blob/dev/CHANGELOG.md)
+- [Video Tutorial](https://www.youtube.com/watch?v=xoO-Fx0fTpM) (xlwings walkthrough, with similar functionality)
 
 ## License
 

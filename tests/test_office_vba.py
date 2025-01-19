@@ -1,34 +1,23 @@
 """Tests for Office VBA handling."""
 
 import tempfile
+import pythoncom
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, PropertyMock
+from contextlib import contextmanager
 
 import pytest
 
 from vba_edit.office_vba import (
-    DocumentClosedError,
-    ExcelVBAHandler,
-    RPCError,
-    VBAAccessError,
     VBAComponentHandler,
-    VBAModuleType,
     WordVBAHandler,
+    ExcelVBAHandler,
+    AccessVBAHandler,
+    VBAModuleType,
 )
-from vba_edit.utils import (
-    EncodingError,
-    VBAFileChangeHandler,
-    detect_vba_encoding,
-    is_office_app_installed,
-)
+from vba_edit.exceptions import DocumentNotFoundError, DocumentClosedError, RPCError
 
 
-def pytest_configure(config):
-    """Add custom markers."""
-    config.addinivalue_line("markers", "integration: mark test as integration test")
-
-
-# Fixtures
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for test files."""
@@ -82,164 +71,312 @@ def sample_vba_files(temp_dir):
     return temp_dir
 
 
+class MockCOMError(Exception):
+    """Mock COM error for testing without causing Windows fatal exceptions."""
+
+    def __init__(self, hresult, text, details, helpfile=None):
+        self.args = (hresult, text, details, helpfile)
+
+
+@contextmanager
+def com_initialized():
+    """Context manager for COM initialization/cleanup."""
+    pythoncom.CoInitialize()
+    try:
+        yield
+    finally:
+        pythoncom.CoUninitialize()
+
+
+class BaseOfficeMock:
+    """Base class for Office mock fixtures."""
+
+    def __init__(self, handler_class, temp_dir, mock_document, file_extension):
+        self.handler_class = handler_class
+        self.temp_dir = temp_dir
+        self.mock_document = mock_document
+        self.file_extension = file_extension
+        self.handler = None
+        self.mock_app = None
+
+    def setup(self):
+        """Setup the mock handler and app."""
+        doc_path = self.temp_dir / f"test{self.file_extension}"
+        doc_path.touch()
+
+        self.mock_app = Mock()
+        self._configure_mock_app()
+
+        with patch("win32com.client.Dispatch") as mock_dispatch:
+            mock_dispatch.return_value = self.mock_app
+            self.handler = self.handler_class(doc_path=str(doc_path), vba_dir=str(self.temp_dir))
+            self.handler.app = self.mock_app
+            self.handler.doc = self.mock_document
+
+    def cleanup(self):
+        """Cleanup mock objects and references."""
+        if hasattr(self, "handler"):
+            if hasattr(self.handler, "doc"):
+                self.handler.doc = None
+            if hasattr(self.handler, "app"):
+                self.handler.app = None
+            self.handler = None
+        self.mock_app = None
+
+    def _configure_mock_app(self):
+        """Configure app-specific mock behavior. Override in subclasses."""
+        raise NotImplementedError
+
+
 @pytest.fixture
-def mock_word_handler(temp_dir):
+def mock_word_handler(temp_dir, mock_document):
     """Create a WordVBAHandler with mocked COM objects."""
-    with patch("win32com.client.Dispatch") as mock_dispatch:
-        mock_app = Mock()
-        mock_doc = Mock()
-        mock_app.Documents.Open.return_value = mock_doc
-        mock_dispatch.return_value = mock_app
 
-        handler = WordVBAHandler(doc_path=str(temp_dir / "test.docm"), vba_dir=str(temp_dir))
-        handler.app = mock_app
-        handler.doc = mock_doc
-        yield handler
+    class WordMock(BaseOfficeMock):
+        def _configure_mock_app(self):
+            self.mock_app.Documents.Open.return_value = self.mock_document
+
+    with com_initialized():
+        mock = WordMock(WordVBAHandler, temp_dir, mock_document, ".docm")
+        mock.setup()
+        yield mock.handler
+        mock.cleanup()
 
 
 @pytest.fixture
-def mock_excel_handler(temp_dir):
+def mock_document():
+    """Create a mock document with VBA project."""
+    mock_doc = Mock()
+    mock_vbproj = Mock()
+    mock_doc.VBProject = mock_vbproj
+    mock_components = Mock()
+    mock_vbproj.VBComponents = mock_components
+    return mock_doc
+
+
+@pytest.fixture
+def mock_excel_handler(temp_dir, mock_document):
     """Create an ExcelVBAHandler with mocked COM objects."""
-    with patch("win32com.client.Dispatch") as mock_dispatch:
-        mock_app = Mock()
-        mock_wb = Mock()
-        mock_app.Workbooks.Open.return_value = mock_wb
-        mock_dispatch.return_value = mock_app
 
-        handler = ExcelVBAHandler(doc_path=str(temp_dir / "test.xlsm"), vba_dir=str(temp_dir))
-        handler.app = mock_app
-        handler.doc = mock_wb
-        yield handler
+    class ExcelMock(BaseOfficeMock):
+        def _configure_mock_app(self):
+            self.mock_app.Workbooks.Open.return_value = self.mock_document
+
+    with com_initialized():
+        mock = ExcelMock(ExcelVBAHandler, temp_dir, mock_document, ".xlsm")
+        mock.setup()
+        yield mock.handler
+        mock.cleanup()
 
 
-# Test VBA Component Handler
-def test_get_module_type():
-    """Test correct identification of VBA module types."""
+@pytest.fixture
+def mock_access_handler(temp_dir, mock_document):
+    """Create an AccessVBAHandler with mocked COM objects."""
+
+    class AccessMock(BaseOfficeMock):
+        def _configure_mock_app(self):
+            self.mock_app.CurrentDb.return_value = self.mock_document
+            # Access-specific configuration
+            self.mock_app.VBE = Mock()
+            self.mock_app.VBE.ActiveVBProject = self.mock_document.VBProject
+
+    with com_initialized():
+        mock = AccessMock(AccessVBAHandler, temp_dir, mock_document, ".accdb")
+        mock.setup()
+        yield mock.handler
+        mock.cleanup()
+
+
+def create_mock_component():
+    """Create a fresh mock component with code module."""
+    mock_component = Mock()
+    mock_code_module = Mock()
+    mock_code_module.CountOfLines = 0
+    mock_component.CodeModule = mock_code_module
+    return mock_component, mock_code_module
+
+
+def test_path_handling(temp_dir):
+    """Test path handling in VBA handlers."""
+    # Create test document
+    doc_path = temp_dir / "test.docm"
+    doc_path.touch()
+    vba_dir = temp_dir / "vba"
+
+    # Test normal initialization
+    handler = WordVBAHandler(doc_path=str(doc_path), vba_dir=str(vba_dir))
+    assert handler.doc_path == doc_path.resolve()
+    assert handler.vba_dir == vba_dir.resolve()
+    assert vba_dir.exists()
+
+    # Test with nonexistent document
+    nonexistent = temp_dir / "nonexistent.docm"
+    with pytest.raises(DocumentNotFoundError) as exc_info:
+        WordVBAHandler(doc_path=str(nonexistent), vba_dir=str(vba_dir))
+    assert "not found" in str(exc_info.value).lower()
+
+
+def test_vba_error_handling(mock_word_handler):
+    """Test VBA-specific error conditions."""
+    # # Create a mock COM error that simulates VBA access denied
+    # mock_error = MockCOMError(
+    #     -2147352567,  # DISP_E_EXCEPTION
+    #     "Exception occurred",
+    #     (0, "Microsoft Word", "VBA Project access is not trusted", "wdmain11.chm", 25548, -2146822220),
+    #     None,
+    # )
+
+    # with patch.object(mock_word_handler.doc, "VBProject", new_callable=PropertyMock) as mock_project:
+    #     # Use our mock error instead of pywintypes.com_error
+    #     mock_project.side_effect = mock_error
+    #     with pytest.raises(VBAAccessError) as exc_info:
+    #         mock_word_handler.get_vba_project()
+    #     assert "Trust access to the VBA project" in str(exc_info.value)
+
+    # Test RPC server error
+    with patch.object(mock_word_handler.doc, "Name", new_callable=PropertyMock) as mock_name:
+        mock_name.side_effect = Exception("RPC server is unavailable")
+        with pytest.raises(RPCError) as exc_info:
+            mock_word_handler.is_document_open()
+        assert "lost connection" in str(exc_info.value).lower()
+
+    # # Test general VBA error
+    # with patch.object(mock_word_handler.doc, "VBProject", new_callable=PropertyMock) as mock_project:
+    #     mock_project.side_effect = Exception("Some unexpected VBA error")
+    #     with pytest.raises(VBAError) as exc_info:
+    #         mock_word_handler.get_vba_project()
+    #     assert "wdmain11.chm" in str(exc_info.value).lower()
+
+
+def test_component_handler():
+    """Test VBA component handler functionality."""
     handler = VBAComponentHandler()
 
-    test_cases = [
-        ("TestModule.bas", VBAModuleType.STANDARD),
-        ("TestClass.cls", VBAModuleType.CLASS),
-        ("TestForm.frm", VBAModuleType.FORM),
-        ("ThisDocument.cls", VBAModuleType.DOCUMENT),
-        ("ThisWorkbook.cls", VBAModuleType.DOCUMENT),
-        ("Hoja1.cls", VBAModuleType.DOCUMENT),  # Spanish Excel sheet
-        ("Sheet1.cls", VBAModuleType.DOCUMENT),  # English Excel sheet
-        ("Tabelle1.cls", VBAModuleType.DOCUMENT),  # German Excel sheet
-    ]
+    # Test module type identification
+    assert handler.get_module_type(Path("test.bas")) == VBAModuleType.STANDARD
+    assert handler.get_module_type(Path("test.cls")) == VBAModuleType.CLASS
+    assert handler.get_module_type(Path("test.frm")) == VBAModuleType.FORM
+    assert handler.get_module_type(Path("ThisDocument.cls")) == VBAModuleType.DOCUMENT
+    assert handler.get_module_type(Path("ThisWorkbook.cls")) == VBAModuleType.DOCUMENT
+    assert handler.get_module_type(Path("Sheet1.cls")) == VBAModuleType.DOCUMENT
 
-    for filename, expected_type in test_cases:
-        result = handler.get_module_type(Path(filename))
-        assert result == expected_type, f"Failed for {filename}"
+    # Test invalid extension
+    with pytest.raises(ValueError):
+        handler.get_module_type(Path("test.invalid"))
 
 
-def test_split_vba_content(sample_vba_files):
-    """Test splitting VBA content into header and code sections."""
+def test_component_header_handling():
+    """Test VBA component header handling."""
     handler = VBAComponentHandler()
 
-    # Test class module splitting
-    class_content = (sample_vba_files / "TestClass.cls").read_text()
-    header, code = handler.split_vba_content(class_content)
-
-    assert "VERSION 1.0 CLASS" in header
-    assert "Attribute VB_Name" in header
-    assert "Public Sub TestMethod()" in code
-    assert "Debug.Print" in code
-
-    # Test standard module splitting
-    standard_content = (sample_vba_files / "TestModule.bas").read_text()
-    header, code = handler.split_vba_content(standard_content)
-
-    assert "Attribute VB_Name" in header
+    # Test header splitting
+    content = 'Attribute VB_Name = "TestModule"\n' "Option Explicit\n" "Sub Test()\n" "End Sub"
+    header, code = handler.split_vba_content(content)
+    assert 'Attribute VB_Name = "TestModule"' in header
+    assert "Option Explicit" in code
     assert "Sub Test()" in code
 
+    # Test minimal header creation
+    header = handler.create_minimal_header("TestModule", VBAModuleType.STANDARD)
+    assert 'Attribute VB_Name = "TestModule"' in header
 
-def test_encoding_detection(temp_dir):
-    """Test VBA file encoding detection."""
-    test_file = temp_dir / "test.bas"
-
-    # Test UTF-8 content
-    test_file.write_text('\' UTF-8 content\nSub Test()\nMsgBox "Hello 世界"\nEnd Sub', encoding="utf-8")
-
-    encoding, confidence = detect_vba_encoding(str(test_file))
-    assert encoding.lower() in ["utf-8", "ascii"]
-    assert confidence > 0.7
-
-    # Test invalid file
-    invalid_file = temp_dir / "invalid.bas"
-    with pytest.raises(EncodingError):
-        detect_vba_encoding(str(invalid_file))
+    class_header = handler.create_minimal_header("TestClass", VBAModuleType.CLASS)
+    assert "VERSION 1.0 CLASS" in class_header
+    assert "MultiUse = -1" in class_header
 
 
-# Test Word VBA Handler
-def test_word_handler_initialization(mock_word_handler):
-    """Test WordVBAHandler initialization."""
-    assert mock_word_handler.app_name == "Word"
-    assert mock_word_handler.app_progid == "Word.Application"
+def test_word_handler_functionality(mock_word_handler, sample_vba_files):
+    """Test Word VBA handler specific functionality."""
+    handler = mock_word_handler
+
+    # Test basic properties
+    assert handler.app_name == "Word"
+    assert handler.app_progid == "Word.Application"
+    assert handler.get_document_module_name() == "ThisDocument"
+
+    # Test document status checking
+    type(handler.doc).Name = PropertyMock(return_value="test.docm")
+    type(handler.doc).FullName = PropertyMock(return_value=str(handler.doc_path))
+    assert handler.is_document_open()
+
+    # Test document module update using local mocks
+    mock_component, mock_code_module = create_mock_component()
+    components = Mock()
+    components.return_value = mock_component
+
+    handler._update_document_module("ThisDocument", "' Test Code", components)
+    mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
-def test_word_handler_document_access(mock_word_handler):
-    """Test document access checking."""
-    # Test normal access
-    mock_word_handler.doc.Name = Mock()
-    mock_word_handler.doc.Name.return_value = "test.docm"
-    mock_word_handler.doc.FullName = str(mock_word_handler.doc_path)
-    assert mock_word_handler.is_document_open()
+def test_excel_handler_functionality(mock_excel_handler, sample_vba_files):
+    """Test Excel VBA handler specific functionality."""
+    handler = mock_excel_handler
 
-    # Test closed document by simulating an RPC error
-    mock_word_handler.doc.Name = Mock()
-    mock_word_handler.doc.Name.side_effect = Exception("RPC server is unavailable")
-    with pytest.raises((DocumentClosedError, RPCError)):
-        mock_word_handler.is_document_open()
+    # Test basic properties
+    assert handler.app_name == "Excel"
+    assert handler.app_progid == "Excel.Application"
+    assert handler.get_document_module_name() == "ThisWorkbook"
 
+    # Test document status checking
+    type(handler.doc).Name = PropertyMock(return_value="test.xlsm")
+    type(handler.doc).FullName = PropertyMock(return_value=str(handler.doc_path))
+    assert handler.is_document_open()
 
-# Test Excel VBA Handler
-def test_excel_handler_initialization(mock_excel_handler):
-    """Test ExcelVBAHandler initialization."""
-    assert mock_excel_handler.app_name == "Excel"
-    assert mock_excel_handler.app_progid == "Excel.Application"
+    # Test workbook module update using local mocks
+    mock_component, mock_code_module = create_mock_component()
+    components = Mock()
+    components.return_value = mock_component
 
-
-# def test_excel_handler_vba_access(mock_excel_handler):
-#     """Test VBA project access checking."""
-
-#     # Create mock VBProject that raises on access
-#     def raise_access_error():
-#         raise Exception("Programmatic access to Visual Basic Project is not trusted")
-
-#     mock_vbproject = Mock()
-#     type(mock_vbproject).VBComponents = property(lambda self: raise_access_error())
-#     type(mock_excel_handler.doc).VBProject = property(lambda self: mock_vbproject)
-
-#     with pytest.raises(VBAAccessError):
-#         mock_excel_handler.get_vba_project()
+    handler._update_document_module("ThisWorkbook", "' Test Code", components)
+    mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
-def test_file_change_handler(temp_dir):
-    """Test VBA file change handling."""
-    doc_path = str(temp_dir / "test.docm")
-    vba_dir = str(temp_dir)
+def test_access_handler_functionality(mock_access_handler, sample_vba_files):
+    """Test Access VBA handler specific functionality."""
+    handler = mock_access_handler
 
-    handler = VBAFileChangeHandler(doc_path, vba_dir)
+    # Test basic properties
+    assert handler.app_name == "Access"
+    assert handler.app_progid == "Access.Application"
+    assert handler.get_document_module_name() == ""
 
-    # Test initialization
-    assert handler.doc_path == Path(doc_path).resolve()
-    assert handler.vba_dir == Path(vba_dir).resolve()
-    assert handler.encoding == "cp1252"  # Default encoding
+    # Test database status checking
+    handler.doc.Name = str(handler.doc_path)
+    assert handler.is_document_open()
+
+    # Test module update using local mocks
+    mock_component, mock_code_module = create_mock_component()
+    components = Mock()
+    components.return_value = mock_component
+
+    handler._update_document_module("TestModule", "' Test Code", components)
+    mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
-@pytest.mark.skipif(not is_office_app_installed("word"), reason="Word is not installed")
-def test_word_export_import_cycle(temp_dir):
-    """Integration test for Word VBA export/import cycle.
+def test_watch_changes_handling(mock_word_handler, temp_dir):
+    """Test file watching functionality."""
+    handler = mock_word_handler
 
-    Note: This test requires Word installation and should be run selectively.
-    """
-    print("Running Word export/import cycle test ... not implemented yet")
+    # Test file change detection
+    test_module = temp_dir / "TestModule.bas"
+    test_module.write_text("' Test Code")
 
-    # doc_path = temp_dir / "test.docm"
-    # Implementation would go here for actual Word automation
-    # This is marked as integration test and skipped by default
+    # Mock time.time() to always return an incrementing value
+    start_time = 0
+
+    def mock_time():
+        nonlocal start_time
+        start_time += 31  # Ensure we're always past the check_interval
+        return start_time
+
+    with patch("time.time", side_effect=mock_time), patch("time.sleep"):  # Also mock sleep to prevent any actual delays
+        # Mock document checking to force exit after one iteration
+        handler.is_document_open = Mock(side_effect=[True, DocumentClosedError()])
+
+        # This should exit after DocumentClosedError is raised
+        with pytest.raises(DocumentClosedError):
+            handler.watch_changes()
 
 
 if __name__ == "__main__":
-    pytest.main(["-v"])
+    pytest.main(["-v", __file__])

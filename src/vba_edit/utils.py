@@ -1,15 +1,28 @@
 import ctypes
 import logging
 import logging.handlers
+import os
 import sys
+from functools import wraps
 from pathlib import Path
-from typing import Optional, Tuple, Callable
+from typing import Dict, Callable, Optional, Tuple
+
+import chardet
 import pywintypes
 import win32com.client
-import chardet
-from functools import wraps
 
-from vba_edit.office_vba import DocumentClosedError, RPCError, check_rpc_error
+from vba_edit.exceptions import (
+    ApplicationError,
+    DocumentClosedError,
+    DocumentNotFoundError,
+    EncodingError,
+    OfficeError,
+    PathError,
+    RPCError,
+    VBAAccessError,
+    check_rpc_error,
+)
+from vba_edit.path_utils import resolve_path
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -38,8 +51,9 @@ def setup_logging(verbose: bool = False, logfile: Optional[str] = None) -> None:
     # File handler with rotation (only if logfile is specified)
     if logfile:
         try:
+            logfile_path = Path(logfile).resolve()
             file_handler = logging.handlers.RotatingFileHandler(
-                logfile,
+                logfile_path,
                 maxBytes=1024 * 1024,  # 1MB
                 backupCount=3,
                 encoding="utf-8",
@@ -49,6 +63,107 @@ def setup_logging(verbose: bool = False, logfile: Optional[str] = None) -> None:
             root_logger.addHandler(file_handler)
         except Exception as e:
             logger.warning(f"Could not set up file logging: {e}")
+
+
+# COM error code for DISP_E_EXCEPTION
+DISP_E_EXCEPTION = -2147352567  # 0x80020005
+
+
+def is_vba_access_error(error: Exception) -> bool:
+    """Check if an error is related to VBA project access being disabled.
+
+    Args:
+        error: The exception to check
+
+    Returns:
+        bool: True if error indicates VBA access is disabled
+    """
+    # Handle both real COM errors and our mock
+    if not (hasattr(error, "args") and len(error.args) >= 3):
+        return False
+
+    # Check for DISP_E_EXCEPTION
+    if error.args[0] != -2147352567:  # 0x80020005
+        return False
+
+    # Verify it's a VBA access error by checking the app specific error code
+    try:
+        if len(error.args) >= 3 and isinstance(error.args[2], tuple):
+            scode = str(error.args[2][5])
+            return any(
+                c in scode
+                for c in [
+                    "-2146822220",  # "trust access to WORD VBA project object model"
+                    "-2146827284",  # "trust access to EXCEL VBA project object model"
+                    "-2147188160",  # "trust access to POWERPOINT VBA project object model"
+                ]
+            )
+        # Catch ACCESS VBA error or any other Office app error
+        elif isinstance(error.args[2], tuple) and str(error.args[2][3]).lower().endswith(".chm"):
+            return True
+    except (IndexError, AttributeError):
+        pass
+
+    return False
+
+
+def get_vba_error_details(error: Exception) -> Dict[str, str]:
+    """Extract detailed information from a VBA-related COM error.
+
+    Args:
+        error: The exception to analyze
+
+    Returns:
+        Dict containing error details with these keys:
+        - hresult: COM error code
+        - message: Error message
+        - source: Source application
+        - description: Detailed error description
+        - scode: Specific error code
+    """
+    details = {
+        "hresult": "",
+        "message": "",
+        "source": "",
+        "description": "",
+        "office_help_file": "",
+        "office_help_context": "",
+        "scode": "",
+    }
+
+    if not isinstance(error, pywintypes.com_error):
+        logger.debug("Not a COM error")
+        logger.debug(str(error))
+        details["message"] = str(error)
+        return details
+
+    try:
+        if len(error.args) >= 3 and isinstance(error.args[2], tuple):
+            details["hresult"] = str(error.args[0])
+            details["message"] = str(error.args[1])
+            error_details = error.args[2]
+
+            if len(error_details) >= 6:
+                details["source"] = str(error_details[1])
+                details["description"] = str(error_details[2])
+                details["office_help_file"] = str(error_details[3])
+                details["office_help_context"] = str(error_details[4])
+                details["scode"] = str(error_details[5])
+
+    except Exception:
+        details["message"] = str(error)
+        pass
+
+    logger.debug(f"Full error details: {error}")
+    logger.debug(f"COM error hresult: {details['hresult']}")
+    logger.debug(f"COM error message: {details['message']}")
+    logger.debug(f"VBA error source: {details['source']}")
+    logger.debug(f"VBA error description: {details['description']}")
+    logger.debug(f"VBA error help file: {details['office_help_file']}")
+    logger.debug(f"VBA error help context: {details['office_help_context']}")
+    logger.debug(f"VBA error scode: {details['scode']}")
+
+    return details
 
 
 def error_handler(func: Callable) -> Callable:
@@ -74,36 +189,6 @@ def error_handler(func: Callable) -> Callable:
             raise OfficeError(f"Operation failed: {str(e)}") from e
 
     return wrapper
-
-
-class OfficeError(Exception):
-    """Base exception class for Office-related errors."""
-
-    pass
-
-
-class DocumentNotFoundError(OfficeError):
-    """Exception raised when document cannot be found."""
-
-    pass
-
-
-class ApplicationError(OfficeError):
-    """Exception raised when there are issues with Office applications."""
-
-    pass
-
-
-class EncodingError(OfficeError):
-    """Exception raised when there are encoding-related issues."""
-
-    pass
-
-
-class VBAAccessError(OfficeError):
-    """Exception raised when VBA project access is denied."""
-
-    pass
 
 
 class VBAFileChangeHandler:
@@ -261,7 +346,6 @@ def get_active_office_document(app_type: str) -> str:
         Full path to the active document
 
     Raises:
-        ValueError: If invalid application type is specified
         ApplicationError: If Office application is not running or no document is active
     """
     app_type = app_type.lower()
@@ -304,6 +388,8 @@ def get_active_office_document(app_type: str) -> str:
     except ApplicationError:
         raise
     except Exception as e:
+        logger.info(f"No active {app_type.title()} document found. Use --file to specify a document path")
+        logger.info(f"or open a macro-enabled document in MS {app_type.title()}.")
         raise ApplicationError(f"Could not connect to {app_type.capitalize()} or get active document: {e}")
 
 
@@ -325,17 +411,19 @@ def get_document_path(file_path: Optional[str] = None, app_type: str = "word") -
     logger.debug(f"Getting document path (file_path={file_path}, app_type={app_type})")
 
     if file_path:
-        path = Path(file_path).resolve()
+        path = resolve_path(file_path)
         if not path.exists():
             raise DocumentNotFoundError(f"Document not found: {path}")
         logger.debug(f"Using provided document path: {path}")
         return str(path)
 
     try:
-        doc_path = get_active_office_document(app_type)
+        doc_path = resolve_path(get_active_office_document(app_type))
+        if not doc_path.exists():
+            raise DocumentNotFoundError(f"Active document not found: {doc_path}")
         logger.debug(f"Using active document path: {doc_path}")
-        return doc_path
-    except Exception as e:
+        return str(doc_path)
+    except (ApplicationError, PathError) as e:
         raise DocumentNotFoundError(f"Could not determine document path: {e}")
 
 
@@ -433,3 +521,203 @@ def get_windows_ansi_codepage() -> Optional[str]:
     except (AttributeError, OSError) as e:
         logger.debug(f"Could not get Windows ANSI codepage: {e}")
         return None
+
+
+class OfficeApp:
+    """Base class for Office application testing."""
+
+    def __init__(self, app_name: str, prog_id: str):
+        self.app_name = app_name
+        self.prog_id = prog_id
+        self.app = None
+        self.doc = None
+        self.test_file = None
+
+    def start(self) -> None:
+        """Start the Office application."""
+        try:
+            self.app = win32com.client.Dispatch(self.prog_id)
+            if self.app_name != "access":
+                self.app.Visible = True
+
+        except Exception as e:
+            logger.warning(f"Failed to start {self.app_name}: {e}")
+            raise
+
+    def cleanup(self) -> None:
+        """Clean up resources."""
+        try:
+            if hasattr(self, "cleanup_doc"):
+                self.cleanup_doc()
+            if self.app and hasattr(self.app, "Quit"):
+                self.app.Quit()
+            if self.test_file and os.path.exists(self.test_file):
+                os.unlink(self.test_file)
+        except Exception as e:
+            logger.error(f"Cleanup error for {self.app_name}: {e}")
+
+    def get_vba_error(self) -> Optional[Tuple[type, str, tuple]]:
+        """Get VBA access error. Should be implemented by subclasses."""
+        raise NotImplementedError
+
+
+class CheckWordApp(OfficeApp):
+    def __init__(self):
+        super().__init__("word", "Word.Application")
+
+    def cleanup_doc(self):
+        if self.doc:
+            self.doc.Close(SaveChanges=False)
+
+    def get_vba_error(self) -> Optional[Tuple[type, str, tuple]]:
+        try:
+            self.test_file = str(Path.cwd() / "test.docm")
+            self.doc = self.app.Documents.Add()
+            self.doc.SaveAs(self.test_file, FileFormat=13)  # wdFormatDocumentMacroEnabled
+            _ = self.doc.VBProject
+            # Test if we can actually access VBA project methods
+            _ = self.doc.VBProject.VBComponents.Count
+            return None
+        except Exception as e:
+            return (type(e), str(e), getattr(e, "args", None))
+
+
+class CheckExcelApp(OfficeApp):
+    def __init__(self):
+        super().__init__("excel", "Excel.Application")
+
+    def cleanup_doc(self):
+        if self.doc:
+            self.doc.Close(SaveChanges=False)
+
+    def get_vba_error(self) -> Optional[Tuple[type, str, tuple]]:
+        try:
+            self.test_file = str(Path.cwd() / "test.xlsm")
+            self.doc = self.app.Workbooks.Add()
+            self.doc.SaveAs(self.test_file, FileFormat=52)  # xlOpenXMLWorkbookMacroEnabled
+            _ = self.doc.VBProject
+            # Test if we can actually access VBA project methods
+            _ = self.doc.VBProject.VBComponents.Count
+            return None
+        except Exception as e:
+            return (type(e), str(e), getattr(e, "args", None))
+
+
+class CheckAccessApp(OfficeApp):
+    def __init__(self):
+        super().__init__("access", "Access.Application")
+
+    def cleanup_doc(self):
+        if self.doc:
+            self.doc.Close()
+        self.app.CloseCurrentDatabase()
+
+    def get_vba_error(self) -> Optional[Tuple[type, str, tuple]]:
+        try:
+            self.test_file = str(Path.cwd() / "test.accdb")
+            if os.path.exists(self.test_file):
+                os.unlink(self.test_file)
+
+            # Create empty database
+            self.app.NewCurrentDatabase(self.test_file)
+            self.doc = self.app.CurrentDb()
+            _ = self.app.VBE.ActiveVBProject
+            # Test if we can actually access VBA project methods
+            _ = self.app.VBE.ActiveVBProject.VBComponents.Count
+            return None
+        except Exception as e:
+            return (type(e), str(e), getattr(e, "args", None))
+
+
+class CheckPowerPointApp(OfficeApp):
+    def __init__(self):
+        super().__init__("powerpoint", "PowerPoint.Application")
+
+    def cleanup_doc(self):
+        if self.doc:
+            self.doc.Close()
+
+    def get_vba_error(self) -> Optional[Tuple[type, str, tuple]]:
+        try:
+            self.test_file = str(Path.cwd() / "test.pptm")
+            self.doc = self.app.Presentations.Add()
+            self.doc.SaveAs(self.test_file)  # PowerPoint defaults to macro-enabled format
+            _ = self.doc.VBProject
+            # Test if we can actually access VBA project methods
+            _ = self.doc.VBProject.VBComponents.Count
+            return None
+        except Exception as e:
+            return (type(e), str(e), getattr(e, "args", None))
+
+
+def check_office_app(app: OfficeApp) -> None:
+    """Check VBA access for an Office application."""
+    logger.info(f"Result of MS {app.app_name.title()} VBA project model Trust Access check:")
+    try:
+        app.start()
+        error = app.get_vba_error()
+        if error:
+            error_type, error_msg, error_args = error
+            logger.info(f"Error type: {error_type}")
+            logger.info(f"Error message: {error_msg}")
+            if error_args:
+                logger.info("Error args:")
+                for i, arg in enumerate(error_args):
+                    logger.info(f"  {i}: {arg}")
+                if isinstance(error_args, tuple) and len(error_args) > 2 and isinstance(error_args[2], tuple):
+                    inner = error_args[2]
+                    logger.debug("  Inner error details:")
+                    for i, detail in enumerate(inner):
+                        logger.debug(f"    {i}: {detail}")
+            if app.app_name == "access":
+                logger.warning(
+                    "--> VBA project model is not accessible (make sure that database is in trusted location"
+                )
+                logger.warning("    and you have permissions to access it)")
+            else:
+                logger.warning(
+                    f"--> VBA project model access seems to be disabled (enable Trust Access in the MS {app.app_name.title()} Trust Center)"
+                )
+
+        else:
+            logger.info("--> VBA project model access is enabled (no furhter action needed)")
+    except Exception as e:
+        logger.warning(f"Failed to check {app.app_name}: {e}")
+    finally:
+        app.cleanup()
+
+
+def check_vba_trust_access(app_name: Optional[str] = None) -> None:
+    if not app_name:
+        app_name = "Office applications"
+    logger.info(f"Checking VBA Trust Access errors for MS {app_name} ...")
+    logger.debug(
+        f"If Trust Access is disabled, this command can be used to extract the MS {app_name.title()} error messages for debugging purposes."
+    )
+
+    app_classes = {
+        "word": CheckWordApp,
+        "excel": CheckExcelApp,
+        "access": CheckAccessApp,
+        "powerpoint": CheckPowerPointApp,
+    }
+
+    if app_name and app_name != "Office applications":
+        if app_name.lower() in app_classes:
+            apps = [app_classes[app_name.lower()]()]
+        else:
+            logger.warning(f"Unsupported application name: {app_name}")
+            return
+    else:
+        apps = [cls() for cls in app_classes.values()]
+
+    for app in apps:
+        check_office_app(app)
+        logger.info("\n")
+
+
+if __name__ == "__main__":
+    app_name = sys.argv[1] if len(sys.argv) > 1 else None
+    setup_logging(verbose=True)
+    setup_logging(logfile=os.path.join(Path.cwd(), "vba_trust_access.log"))
+    check_vba_trust_access(app_name)

@@ -15,6 +15,27 @@ from typing import Dict, Optional, Any, Tuple
 import win32com.client
 from watchgod import Change, RegExpWatcher
 
+# Updated local imports
+from vba_edit.path_utils import (
+    resolve_path,
+    get_document_paths,
+)
+
+from vba_edit.utils import (
+    is_vba_access_error,
+    get_vba_error_details,
+)
+
+from vba_edit.exceptions import (
+    VBAError,
+    VBAAccessError,
+    DocumentClosedError,
+    DocumentNotFoundError,
+    RPCError,
+    check_rpc_error,
+    PathError,
+)
+
 """
 The VBA import/export/edit functionality is based on the excellent work done by the xlwings project
 (https://github.com/xlwings/xlwings) which is distributed under the BSD 3-Clause License:
@@ -184,111 +205,6 @@ class VBATypes:
             "cls_header": True,
         },
     }
-
-
-# Exception classes
-class VBAError(Exception):
-    """Base exception class for all VBA-related errors.
-
-    This exception serves as the parent class for all specific VBA error types
-    in the module. It provides a common base for error handling and allows
-    catching all VBA-related errors with a single except clause.
-    """
-
-    # Forms are not supported in Access
-    pass
-
-
-class VBAAccessError(VBAError):
-    """Exception raised when access to the VBA project is denied.
-
-    This typically occurs when "Trust access to the VBA project object model"
-    is not enabled in the Office application's Trust Center settings.
-    """
-
-    pass
-
-
-class VBAImportError(VBAError):
-    """Exception raised when importing VBA components fails.
-
-    This can occur due to various reasons such as invalid file format,
-    encoding issues, or problems with the VBA project structure.
-    """
-
-    pass
-
-
-class VBAExportError(VBAError):
-    """Exception raised when exporting VBA components fails.
-
-    This can occur due to file system permissions, encoding issues,
-    or problems accessing the VBA components.
-    """
-
-    pass
-
-
-class DocumentClosedError(VBAError):
-    """Exception raised when attempting to access a closed Office document.
-
-    This exception includes a custom error message that provides guidance
-    on how to handle changes made after document closure.
-
-    Args:
-        doc_type (str): Type of document (e.g., "workbook", "document")
-    """
-
-    def __init__(self, doc_type: str = "document"):
-        super().__init__(
-            f"\nThe Office {doc_type} has been closed. The edit session will be terminated.\n"
-            f"IMPORTANT: Any changes made after closing the {doc_type} must be imported using\n"
-            f"'*-vba import' or by saving the file again in the next edit session.\n"
-            f"As of version 0.2.1, the '*-vba edit' command will no longer overwrite files\n"
-            f"already present in the VBA directory."
-        )
-
-
-class RPCError(VBAError):
-    """Exception raised when the RPC server becomes unavailable.
-
-    This typically occurs when the Office application crashes or is forcefully closed.
-
-    Args:
-        app_name (str): Name of the Office application
-    """
-
-    def __init__(self, app_name: str = "Office application"):
-        super().__init__(
-            f"\nLost connection to {app_name}. The edit session will be terminated.\n"
-            f"IMPORTANT: Any changes made after closing {app_name} must be imported using\n"
-            f"'*-vba import' or by saving the file again in the next edit session.\n"
-            f"As of version 0.2.1, the '*-vba edit' command will no longer overwrite files\n"
-            f"already present in the VBA directory."
-        )
-
-
-def check_rpc_error(error: Exception) -> bool:
-    """Check if an exception is related to RPC server unavailability.
-
-    This function examines the error message for common indicators of RPC
-    server connection issues.
-
-    Args:
-        error: The exception to check
-
-    Returns:
-        bool: True if the error appears to be RPC-related, False otherwise
-    """
-    error_str = str(error).lower()
-    rpc_indicators = [
-        "rpc server",
-        "rpc-server",
-        "remote procedure call",
-        "0x800706BA",  # RPC server unavailable error code
-        "-2147023174",  # Same error in decimal
-    ]
-    return any(indicator in error_str for indicator in rpc_indicators)
 
 
 class VBAComponentHandler:
@@ -583,32 +499,30 @@ class OfficeVBAHandler(ABC):
         verbose: bool = False,
         save_headers: bool = False,
     ):
-        """Initialize the VBA handler.
+        """Initialize the VBA handler."""
+        try:
+            # Let DocumentNotFoundError propagate as is - it's more fundamental than VBA errors
+            self.doc_path, self.vba_dir = get_document_paths(doc_path, None, vba_dir)
+            self.encoding = encoding
+            self.verbose = verbose
+            self.save_headers = save_headers
+            self.app = None
+            self.doc = None
+            self.component_handler = VBAComponentHandler()
 
-        Args:
-            doc_path (str): Path to the Office document
-            vba_dir (Optional[str]): Directory for VBA files (defaults to current directory)
-            encoding (str): Character encoding for VBA files (default: cp1252)
-            verbose (bool): Enable verbose logging
-            save_headers (bool): Whether to save VBA component headers to separate files
-        """
-        self.doc_path = Path(doc_path).resolve()
-        self.vba_dir = Path(vba_dir).resolve() if vba_dir else Path.cwd()
-        self.encoding = encoding
-        self.verbose = verbose
-        self.save_headers = save_headers
-        self.app = None
-        self.doc = None
-        self.component_handler = VBAComponentHandler()
+            # Configure logging
+            log_level = logging.DEBUG if verbose else logging.INFO
+            logger.setLevel(log_level)
 
-        # Configure logging
-        log_level = logging.DEBUG if verbose else logging.INFO
-        logger.setLevel(log_level)
+            logger.debug(f"Initialized {self.__class__.__name__} with document: {doc_path}")
+            logger.debug(f"VBA directory: {self.vba_dir}")
+            logger.debug(f"Using encoding: {encoding}")
+            logger.debug(f"Save headers: {save_headers}")
 
-        logger.debug(f"Initialized {self.__class__.__name__} with document: {doc_path}")
-        logger.debug(f"VBA directory: {self.vba_dir}")
-        logger.debug(f"Using encoding: {encoding}")
-        logger.debug(f"Save headers: {save_headers}")
+        except DocumentNotFoundError:
+            raise  # Let it propagate
+        except Exception as e:
+            raise VBAError(f"Failed to initialize VBA handler: {str(e)}") from e
 
     @property
     @abstractmethod
@@ -632,29 +546,48 @@ class OfficeVBAHandler(ABC):
         logger.debug("Getting VBA project...")
         try:
             if self.app_name == "Access":
-                # Access uses VBE.ActiveVBProject
                 vba_project = self.app.VBE.ActiveVBProject
             else:
-                # Word/Excel use doc.VBProject
-                vba_project = self.doc.VBProject
+                try:
+                    vba_project = self.doc.VBProject
+                except Exception as e:
+                    if is_vba_access_error(e):
+                        details = get_vba_error_details(e)
+
+                        # Available details:
+                        # details['hresult']
+                        # details['message']
+                        # details['source']
+                        # details['description']
+                        # details['scode']
+
+                        raise VBAAccessError(
+                            f"Cannot access VBA project in {details['source']}. "
+                            f"Error: {details['description']}\n"
+                            f"Please ensure 'Trust access to the VBA project object model' "
+                            f"is enabled in Trust Center Settings."
+                        ) from e
+                    raise
 
             if vba_project is None:
                 raise VBAAccessError(
-                    "Cannot access VBA project. Please ensure 'Trust access to the VBA "
-                    "project object model' is enabled in Trust Center Settings."
+                    f"Cannot access VBA project in {self.app_name}. "
+                    "Please ensure 'Trust access to the VBA project object model' "
+                    "is enabled in Trust Center Settings."
                 )
-            else:
-                logger.debug("VBA project accessed successfully")
+
+            logger.debug("VBA project accessed successfully")
             return vba_project
 
         except Exception as e:
-            logger.error(f"Failed to access VBA project: {str(e)}")
             if check_rpc_error(e):
                 raise RPCError(self.app_name)
-            raise VBAAccessError(
-                "Cannot access VBA project. Please ensure 'Trust access to the VBA "
-                "project object model' is enabled in Trust Center Settings."
-            ) from e
+
+            if isinstance(e, VBAAccessError):
+                raise
+
+            logger.error(f"Failed to access VBA project: {str(e)}")
+            raise VBAError(f"Failed to access VBA project in {self.app_name}: {str(e)}") from e
 
     @abstractmethod
     def get_document_module_name(self) -> str:
@@ -686,7 +619,8 @@ class OfficeVBAHandler(ABC):
             if self.app is None:
                 logger.debug(f"Initializing {self.app_name} application")
                 self.app = win32com.client.Dispatch(self.app_progid)
-                self.app.Visible = True
+                if self.app_name != "Access":
+                    self.app.Visible = True
         except Exception as e:
             error_msg = f"Failed to initialize {self.app_name} application"
             logger.error(f"{error_msg}: {str(e)}")
@@ -768,19 +702,14 @@ class OfficeVBAHandler(ABC):
             raise VBAError(error_msg) from e
 
     def export_component(self, component: Any, directory: Path) -> None:
-        """Export a single VBA component.
-
-        Args:
-            component: VBA component to export
-            directory: Target directory for export
-        """
+        """Export a single VBA component."""
         temp_file = None
         try:
             logger.debug(f"Starting component export for {component.Name}")
             info = self.component_handler.get_component_info(component)
             name = info["name"]
             logger.debug(f"Exporting component {name} with save_headers={self.save_headers}")
-            temp_file = directory / f"{name}.tmp"
+            temp_file = resolve_path(f"{name}.tmp", directory)
 
             # Export to temp file
             logger.debug("About to call component.Export")
@@ -800,19 +729,13 @@ class OfficeVBAHandler(ABC):
 
             logger.info(f"Exported: {name}")
 
-            # Verify document is still open
-            if self.app_name == "Access":
-                logger.debug("Verifying Access is still running")
-                _ = self.app.CurrentDb()
-                logger.debug("Access verified still running after export")
-
         except Exception as e:
             logger.error(f"Failed to export component {component.Name}: {str(e)}")
             raise VBAError(f"Failed to export component {component.Name}") from e
         finally:
-            if temp_file and temp_file.exists():
+            if temp_file and Path(temp_file).exists():
                 try:
-                    temp_file.unlink()
+                    Path(temp_file).unlink()
                 except OSError:
                     pass
 
@@ -945,15 +868,35 @@ class OfficeVBAHandler(ABC):
             logger.error(f"Failed to update content for {component.Name}: {str(e)}")
             raise VBAError("Failed to update module content") from e
 
-    @abstractmethod
     def _handle_form_binary_export(self, name: str) -> None:
         """Handle form binary (.frx) export."""
-        pass
+        try:
+            frx_source = resolve_path(f"{name}.frx", Path(self.doc.FullName).parent)
+            if frx_source.exists():
+                frx_target = resolve_path(f"{name}.frx", self.vba_dir)
+                try:
+                    shutil.copy2(str(frx_source), str(frx_target))
+                    logger.debug(f"Exported form binary: {frx_target}")
+                except (OSError, shutil.Error) as e:
+                    logger.error(f"Failed to copy form binary {name}.frx: {e}")
+                    raise VBAError(f"Failed to export form binary {name}.frx") from e
+        except PathError as e:
+            raise VBAError(f"Failed to handle form binary path: {str(e)}") from e
 
-    @abstractmethod
     def _handle_form_binary_import(self, name: str) -> None:
         """Handle form binary (.frx) import."""
-        pass
+        try:
+            frx_source = resolve_path(f"{name}.frx", self.vba_dir)
+            if frx_source.exists():
+                frx_target = resolve_path(f"{name}.frx", Path(self.doc.FullName).parent)
+                try:
+                    shutil.copy2(str(frx_source), str(frx_target))
+                    logger.debug(f"Imported form binary: {frx_target}")
+                except (OSError, shutil.Error) as e:
+                    logger.error(f"Failed to copy form binary {name}.frx: {e}")
+                    raise VBAError(f"Failed to import form binary {name}.frx") from e
+        except PathError as e:
+            raise VBAError(f"Failed to handle form binary path: {str(e)}") from e
 
     @abstractmethod
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
@@ -1140,12 +1083,7 @@ class OfficeVBAHandler(ABC):
             raise VBAError(f"Failed to import {file_path.name}") from e
 
     def export_vba(self, save_metadata: bool = False, overwrite: bool = True) -> None:
-        """Export VBA modules to files.
-
-        Args:
-            save_metadata: Whether to save encoding metadata
-            overwrite: Whether to overwrite existing files
-        """
+        """Export VBA modules to files."""
         logger.debug("Starting export_vba operation")
         try:
             # Ensure document is open
@@ -1175,7 +1113,8 @@ class OfficeVBAHandler(ABC):
             for component in components:
                 try:
                     info = self.component_handler.get_component_info(component)
-                    final_file = self.vba_dir / f"{info['name']}{info['extension']}"
+                    # Use resolve_path for component file path
+                    final_file = resolve_path(f"{info['name']}{info['extension']}", self.vba_dir)
 
                     if not overwrite and final_file.exists():
                         if info["type"] != VBATypes.VBEXT_CT_DOCUMENT or (
@@ -1197,8 +1136,19 @@ class OfficeVBAHandler(ABC):
                 self._save_metadata(encoding_data)
                 logger.debug("Metadata saved")
 
-            # Show exported files to user (do this last!)
-            os.startfile(str(self.vba_dir.resolve()))
+            # Show exported files to user
+
+            # Plattform independent way to open the directory commented out
+            # as only Windows is supported for now
+
+            # try:
+            os.startfile(str(self.vba_dir))
+            # except AttributeError:
+            #     # os.startfile is Windows only, use platform-specific alternatives
+            #     if sys.platform == "darwin":
+            #         subprocess.run(["open", str(self.vba_dir)])
+            #     else:
+            #         subprocess.run(["xdg-open", str(self.vba_dir)])
 
         except Exception as e:
             error_msg = "Failed to export VBA content"
@@ -1236,30 +1186,6 @@ class WordVBAHandler(OfficeVBAHandler):
     def _open_document_impl(self) -> Any:
         """Implementation-specific document opening logic."""
         return self.app.Documents.Open(str(self.doc_path))
-
-    def _handle_form_binary_export(self, name: str) -> None:
-        """Handle form binary (.frx) export for Word."""
-        frx_source = Path(self.doc.FullName).parent / f"{name}.frx"
-        if frx_source.exists():
-            frx_target = self.vba_dir / f"{name}.frx"
-            try:
-                shutil.copy2(frx_source, frx_target)
-                logger.debug(f"Exported form binary: {frx_target}")
-            except (OSError, shutil.Error) as e:
-                logger.error(f"Failed to copy form binary {name}.frx: {e}")
-                raise VBAError(f"Failed to export form binary {name}.frx") from e
-
-    def _handle_form_binary_import(self, name: str) -> None:
-        """Handle form binary (.frx) import for Word."""
-        frx_source = self.vba_dir / f"{name}.frx"
-        if frx_source.exists():
-            frx_target = Path(self.doc.FullName).parent / f"{name}.frx"
-            try:
-                shutil.copy2(frx_source, frx_target)
-                logger.debug(f"Imported form binary: {frx_target}")
-            except (OSError, shutil.Error) as e:
-                logger.error(f"Failed to copy form binary {name}.frx: {e}")
-                raise VBAError(f"Failed to import form binary {name}.frx") from e
 
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
         """Update an existing document module for Word."""
@@ -1311,30 +1237,6 @@ class ExcelVBAHandler(OfficeVBAHandler):
         """Implementation-specific document opening logic."""
         return self.app.Workbooks.Open(str(self.doc_path))
 
-    def _handle_form_binary_export(self, name: str) -> None:
-        """Handle form binary (.frx) export for Excel."""
-        frx_source = Path(self.doc.FullName).parent / f"{name}.frx"
-        if frx_source.exists():
-            frx_target = self.vba_dir / f"{name}.frx"
-            try:
-                shutil.copy2(frx_source, frx_target)
-                logger.debug(f"Exported form binary: {frx_target}")
-            except (OSError, shutil.Error) as e:
-                logger.error(f"Failed to copy form binary {name}.frx: {e}")
-                raise VBAError(f"Failed to export form binary {name}.frx") from e
-
-    def _handle_form_binary_import(self, name: str) -> None:
-        """Handle form binary (.frx) import for Excel."""
-        frx_source = self.vba_dir / f"{name}.frx"
-        if frx_source.exists():
-            frx_target = Path(self.doc.FullName).parent / f"{name}.frx"
-            try:
-                shutil.copy2(frx_source, frx_target)
-                logger.debug(f"Imported form binary: {frx_target}")
-            except (OSError, shutil.Error) as e:
-                logger.error(f"Failed to copy form binary {name}.frx: {e}")
-                raise VBAError(f"Failed to import form binary {name}.frx") from e
-
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
         """Update an existing document module for Excel."""
         try:
@@ -1385,30 +1287,42 @@ class AccessVBAHandler(OfficeVBAHandler):
             verbose: Enable verbose logging
             save_headers: Whether to save VBA component headers to separate files
         """
-        # First call parent's init to properly set all attributes
-        super().__init__(doc_path, vba_dir, encoding, verbose, save_headers)
-
-        # Then handle Access-specific initialization
         try:
-            # Try to get running instance first
-            app = win32com.client.GetObject("Access.Application")
+            # Let parent handle path resolution
+            super().__init__(
+                doc_path=doc_path,
+                vba_dir=vba_dir,
+                encoding=encoding,
+                verbose=verbose,
+                save_headers=save_headers,
+            )
+
+            # Handle Access-specific initialization
             try:
-                current_db = app.CurrentDb()
-                if current_db and str(self.doc_path) == current_db.Name:
-                    logger.debug("Using already open database")
-                    self.app = app
-                    self.doc = current_db
-                    return
+                # Try to get running instance first
+                app = win32com.client.GetObject("Access.Application")
+                try:
+                    current_db = app.CurrentDb()
+                    if current_db and str(self.doc_path) == current_db.Name:
+                        logger.debug("Using already open database")
+                        self.app = app
+                        self.doc = current_db
+                        return
+                except Exception:
+                    pass
             except Exception:
                 pass
-        except Exception:
-            pass
 
-        # If we get here, we need to initialize a new instance
-        logger.debug("No existing database connection found, initializing new instance")
-        self.initialize_app()
-        self.doc = self._open_document_impl()
-        logger.debug("Database opened successfully")
+            # If we get here, we need to initialize a new instance
+            logger.debug("No existing database connection found, initializing new instance")
+            self.initialize_app()
+            self.doc = self._open_document_impl()
+            logger.debug("Database opened successfully")
+
+        except VBAError:
+            raise
+        except Exception as e:
+            raise VBAError(f"Failed to initialize Access VBA handler: {str(e)}") from e
 
     @property
     def app_name(self) -> str:
@@ -1467,24 +1381,6 @@ class AccessVBAHandler(OfficeVBAHandler):
         or Excel's ThisWorkbook, so this returns an empty string.
         """
         return ""
-
-    def _handle_form_binary_export(self, name: str) -> None:
-        """Handle form binary export for Access.
-
-        Forms in Access are fundamentally different from Word/Excel UserForms
-        and are not supported in VBA editing.
-        """
-        logger.debug("Form binary export not supported in Access")
-        pass
-
-    def _handle_form_binary_import(self, name: str) -> None:
-        """Handle form binary import for Access.
-
-        Forms in Access are fundamentally different from Word/Excel UserForms
-        and are not supported in VBA editing.
-        """
-        logger.debug("Form binary import not supported in Access")
-        pass
 
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
         """Update module code in Access.
