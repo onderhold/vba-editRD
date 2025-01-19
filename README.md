@@ -102,6 +102,10 @@ Each tool supports three main commands:
 - `import`: Import VBA modules from files
 - `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
+> [!NOTE]
+> The command `python -m vba_edit.utils` can be used to troubleshoot Trust Access to VBA project object model, 
+> scanning and giving feedback on all supported MS Office apps
+
 ### Common Options
 
 ```text
