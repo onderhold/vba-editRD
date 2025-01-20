@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 
+- Option to show program's version number and exit added to all cli interfaces (`--version`)
 <!-- ### Changed -->
 <!-- -  -->
 
