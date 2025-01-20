@@ -50,8 +50,8 @@ Commands:
 
 Examples:
     access-vba edit   <--- uses active Access database and current directory for exported 
-                          VBA files (*.bas/*.cls) & syncs changes back to the 
-                          database on save
+                           VBA files (*.bas/*.cls) & syncs changes back to the 
+                           database on save
 
     access-vba import -f "C:/path/to/database.accdb" --vba-directory "path/to/vba/files"
     access-vba export --file "C:/path/to/database.accdb" --encoding cp850 --save-metadata

@@ -72,10 +72,10 @@ word-vba import --vba-directory ./VBA
 
 ```bash
 # Export VBA modules
-access-vba export --vba-directory ./src
+access-vba export --vba-directory ./VBA
 
 # Import changes
-access-vba import --vba-directory ./src
+access-vba import --vba-directory ./VBA
 ```
 
 ## Detailed Features
@@ -115,7 +115,8 @@ Each tool supports three main commands (plus 'check' for troubleshooting):
 --detect-encoding, -d  Auto-detect encoding
 --save-headers         Save module headers separately
 --verbose, -v          Enable detailed logging
---logfile, -l         Enable file logging
+--logfile, -l          Enable file logging
+--version              Show program's version number and exit
 ```
 
 ### Excel-Specific Features
