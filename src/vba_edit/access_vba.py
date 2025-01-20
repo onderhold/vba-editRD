@@ -158,6 +158,12 @@ IMPORTANT:
         "check",
         help="Check if the MS Access VBA project object model' is accessible",
     )
+    # Add --version argument to the main parser
+    check_parser.add_argument(
+        "--version",
+        action="version",
+        version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
+    )
     check_parser.add_argument(
         "--verbose",
         "-v",
