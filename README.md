@@ -95,7 +95,7 @@ The package provides separate command-line tools for each Office application:
 - `excel-vba`
 - `access-vba`
 
-Each tool supports three main commands:
+Each tool supports three main commands (plus 'check' for troubleshooting):
 
 - `edit`: Live sync between editor and Office (Word/Excel only)
 - `export`: Export VBA modules to files
@@ -103,7 +103,7 @@ Each tool supports three main commands:
 - `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
 > [!NOTE]
-> The command `python -m vba_edit.utils` can be used to troubleshoot Trust Access to VBA project object model, 
+> In addition, the command `python -m vba_edit.utils` can be used to troubleshoot Trust Access to VBA project object model, 
 > scanning and giving feedback on all supported MS Office apps
 
 ### Common Options
@@ -136,7 +136,6 @@ excel-vba edit -x  # Use xlwings wrapper
 
 ## Known Limitations
 
-- Access support is limited to import/export (no live editing)
 - UserForms require `--save-headers` option
 - PowerPoint support coming in v0.4.0
 - `--in-file-headers` option coming soon
