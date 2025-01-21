@@ -94,6 +94,7 @@ The package provides separate command-line tools for each Office application:
 - `word-vba`
 - `excel-vba`
 - `access-vba`
+- `powerpoint-vba`
 
 Each tool supports three main commands (plus 'check' for troubleshooting):
 

@@ -72,9 +72,7 @@ IMPORTANT:
 
     # Add --version argument to the main parser
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
+        "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -95,7 +93,10 @@ IMPORTANT:
                 "help": "Enable logging to file. Optional path can be specified (default: vba_edit.log)",
             },
         ),
-        "version": (["--version"], {"action": "version", "version": f"{package_name_formatted} v{package_version} ({entry_point_name})"}),
+        "version": (
+            ["--version"],
+            {"action": "version", "version": f"{package_name_formatted} v{package_version} ({entry_point_name})"},
+        ),
     }
 
     # Edit command

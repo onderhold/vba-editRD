@@ -52,7 +52,7 @@ include = ["vba_edit", "src", "vba_edit.*"]
 word-vba =  "vba_edit.word_vba:main"
 excel-vba = "vba_edit.excel_vba:main"
 access-vba = "vba_edit.access_vba:main"
-#powerpoint-vba = "vba_edit.powerpoint_vba:main"
+powerpoint-vba = "vba_edit.powerpoint_vba:main"
 
 
 [project.urls]

@@ -92,6 +92,29 @@ class DocumentClosedError(VBAError):
         )
 
 
+class DocumentIsReadOnlyError(VBAError):
+    """Exception raised when attempting to modify a read-only Office document.
+
+    This exception includes a custom error message that provides guidance
+    on how to handle changes in read-only mode.
+
+    Args:
+        doc_type (str): Type of document (e.g., "workbook", "document")
+    """
+
+    def __init__(self, doc_type: str = "document"):
+        super().__init__(
+            f"\nThe Office {doc_type} is in read-only mode. Changes cannot be saved.\n"
+            f"IMPORTANT: To save changes, ensure the {doc_type} is not read-only and try again.\n"
+            f"\nThis usually happens when:"
+            f"\n- Multiple instances of the same presentation are open"
+            f"\n- The presentation is opened from a network location"
+            f"\n- The file is marked as read-only"
+            f"\n- Close all instances and then consider"
+            f"\n  using --file flag to specify the presentation explicitly"
+        )
+
+
 class RPCError(VBAError):
     """Exception raised when the RPC server becomes unavailable.
 

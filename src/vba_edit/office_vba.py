@@ -30,6 +30,7 @@ from vba_edit.exceptions import (
     VBAError,
     VBAAccessError,
     DocumentClosedError,
+    DocumentIsReadOnlyError,
     DocumentNotFoundError,
     RPCError,
     check_rpc_error,
@@ -136,22 +137,39 @@ class VBADocumentNames:
         "ЭтотДокумент",  # Russian
     }
 
+    # PowerPoint slide module prefixes
+    POWERPOINT_SLIDE_PREFIXES = {
+        "Slide",  # English
+        "Folie",  # German
+        "Diapo",  # French
+        "Diapositiva",  # Spanish/Italian
+        "Slide",  # Portuguese
+        "スライド",  # Japanese
+        "投影片",  # Chinese Traditional
+        "幻灯片",  # Chinese Simplified
+        "슬라이드",  # Korean
+        "Слайд",  # Russian
+    }
+
     @classmethod
     def is_document_module(cls, name: str) -> bool:
-        """Check if a name matches any known document module name.
-
-        Args:
-            name: Name to check
-
-        Returns:
-            bool: True if name matches any known document module name
-        """
-        # Direct match for workbook/document
-        if name in cls.EXCEL_WORKBOOK_NAMES or name in cls.WORD_DOCUMENT_NAMES:
+        """Check if a name matches any known document module name."""
+        # Handle standard document modules (Excel/Word)
+        if (name in cls.EXCEL_WORKBOOK_NAMES or 
+            name in cls.WORD_DOCUMENT_NAMES):
             return True
-
-        # Check for sheet names with numbers
-        return any(name.startswith(prefix) and name[len(prefix) :].isdigit() for prefix in cls.EXCEL_SHEET_PREFIXES)
+            
+        # Handle Excel sheets
+        if any(name.startswith(prefix) and name[len(prefix):].isdigit() 
+               for prefix in cls.EXCEL_SHEET_PREFIXES):
+            return True
+            
+        # Handle PowerPoint slides
+        if any(name.startswith(prefix) and name[len(prefix):].isdigit() 
+               for prefix in cls.POWERPOINT_SLIDE_PREFIXES):
+            return True
+            
+        return False
 
 
 # VBA type definitions and constants
@@ -1449,3 +1467,103 @@ class AccessVBAHandler(OfficeVBAHandler):
             if check_rpc_error(e):
                 raise RPCError(self.app_name)
             raise DocumentClosedError(self.document_type)
+
+
+class PowerPointVBAHandler(OfficeVBAHandler):
+    """Microsoft PowerPoint specific implementation of VBA operations.
+    
+    PowerPoint has a unique VBA project structure:
+    - No document-level module (unlike Word's ThisDocument or Excel's ThisWorkbook)
+    - Each slide has its own module (e.g., "Slide1", "Slide2")
+    - Standard modules, class modules, and forms work the same as other Office apps
+    """
+
+    @property
+    def app_name(self) -> str:
+        """Name of the Office application."""
+        return "PowerPoint"
+
+    @property
+    def app_progid(self) -> str:
+        """ProgID for COM automation."""
+        return "PowerPoint.Application"
+
+    def get_document_module_name(self) -> str:
+        """Get the name of the presentation module.
+        
+        PowerPoint has no document-level module, so return empty string.
+        """
+        return ""
+    
+    def document_is_read_only(self) -> bool:
+        """Check if the PowerPoint presentation is read-only.
+        
+        PowerPoint doesn't have a direct read-only flag, so we check if the
+        presentation is protected for editing.
+        
+        Returns:
+            bool: True if the presentation is read-only
+        """
+        try:
+            # Check if presentation is read-only
+            if self.doc.ReadOnly:
+                logger.warning(
+                    "\nPresentation is opened in read-only mode!"
+                )
+            return True
+        except Exception as e:
+            raise VBAError("Failed to check if presentation is read-only") from e
+
+    def _open_document_impl(self) -> Any:
+        """Implementation-specific presentation opening logic."""
+        try:
+            presentation = self.app.Presentations.Open(str(self.doc_path))
+            
+            # # Check if presentation is read-only and raise error if so
+            # # also sys.exit(1) to stop the execution
+            # does not work
+            
+            # if self.document_is_read_only():
+            #     raise DocumentIsReadOnlyError(self.document_type)
+            #     sys.exit(1)
+            
+            return presentation
+            
+        except Exception as e:
+            raise VBAError(f"Failed to open presentation: {str(e)}") from e
+
+    def save_document(self) -> None:
+        """Save the presentation if it's open.
+        
+        PowerPoint requires specific save handling different from Word/Excel.
+        """
+        if self.doc is not None:
+            try:
+                # PowerPoint uses Save() not SaveAs()
+                self.doc.Save()
+                logger.info("Presentation has been saved and left open for further editing")
+            except Exception as e:
+                if check_rpc_error(e):
+                    raise RPCError(self.app_name)
+                raise VBAError("Failed to save presentation") from e
+
+    def _update_document_module(self, name: str, code: str, components: Any) -> None:
+        """Update module code.
+        
+        Since PowerPoint has no document module, this acts like a regular module update.
+        """
+        try:
+            component = components(name)
+
+            # Clear existing code
+            if component.CodeModule.CountOfLines > 0:
+                component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
+
+            # Add new code
+            if code.strip():
+                component.CodeModule.AddFromString(code)
+
+            logger.info(f"Updated module: {name}")
+
+        except Exception as e:
+            raise VBAError(f"Failed to update module {name}") from e

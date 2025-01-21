@@ -1,19 +1,20 @@
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
 from vba_edit.exceptions import (
     ApplicationError,
-    DocumentClosedError,
     DocumentNotFoundError,
+    DocumentClosedError,
     PathError,
     RPCError,
     VBAAccessError,
     VBAError,
 )
-from vba_edit.office_vba import AccessVBAHandler
+from vba_edit.office_vba import PowerPointVBAHandler
 from vba_edit.path_utils import get_document_paths
 from vba_edit.utils import get_active_office_document, get_windows_ansi_codepage, setup_logging
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def create_cli_parser() -> argparse.ArgumentParser:
     """Create the command-line interface parser."""
-    entry_point_name = "access-vba"
+    entry_point_name = "powerpoint-vba"
     package_name_formatted = package_name.replace("_", "-")
 
     # Get system default encoding
@@ -35,35 +36,36 @@ def create_cli_parser() -> argparse.ArgumentParser:
         description=f"""
 {package_name_formatted} v{package_version} ({entry_point_name})
 
-A command-line tool suite for managing VBA content in MS Access databases.
+A command-line tool suite for managing VBA content in MS Office documents.
 
-ACCESS-VBA allows you to edit, import, and export VBA content from Access databases.
-If no file is specified, the tool will attempt to use the currently active Access database.
-If multiple databases are open, you must specify the target database using --file.
-Only standard modules (*.bas) and class modules (*.cls) are supported.
+POWERPOINT-VBA allows you to edit, import, and export VBA content from PowerPoint documents.
+If no file is specified, the tool will attempt to use the currently active PowerPoint document.
 
 Commands:
-    edit    Edit VBA content in MS Access database
-    import  Import VBA content into MS Access database
-    export  Export VBA content from MS Access database
-    check   Check if MS Access VBA project object model is accessible 
+    edit    Edit VBA content in MS PowerPoint document
+    import  Import VBA content into MS PowerPoint document
+    export  Export VBA content from MS PowerPoint document
+    check   Check if 'Trust Access to the MS PowerPoint VBA project object model' is enabled
 
 Examples:
-    access-vba edit   <--- uses active Access database and current directory for exported 
-                           VBA files (*.bas/*.cls) & syncs changes back to the 
-                           database on save
+    powerpoint-vba edit    <--- uses active PowerPoint document and current directory for exported 
+                           VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
+                           active PowerPoint document on save
 
-    access-vba import -f "C:/path/to/database.accdb" --vba-directory "path/to/vba/files"
-    access-vba export --file "C:/path/to/database.accdb" --encoding cp850 --save-metadata
+    powerpoint-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
+    powerpoint-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    powerpoint-vba edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+    powerpoint-vba edit --save-headers
 
 IMPORTANT: 
-           [!] It's early days. Use with care and backup your important macro-enabled
-               MS Access databases before using them with this tool!
+           [!] It's early days. Use with care and backup your imortant macro-enabled
+               MS Office documents before using them with this tool!
 
-           [!] This tool requires "Trust access to the VBA project object model"
-           
-           [!] The database will remain open after operations complete - closing
-               should be done manually through Access.
+               First tests have been very promissing. Feedback appreciated via
+               github issues. 
+
+           [!] This tool requires "Trust access to the VBA project object model" 
+               enabled in PowerPoint.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -77,7 +79,7 @@ IMPORTANT:
 
     # Create parsers for each command with common arguments
     common_args = {
-        "file": (["--file", "-f"], {"help": "Path to Access database (required if multiple databases are open)"}),
+        "file": (["--file", "-f"], {"help": "Path to PowerPoint document (optional, defaults to active workbook)"}),
         "vba_directory": (
             ["--vba-directory"],
             {"help": "Directory to export VBA files to (optional, defaults to current directory)"},
@@ -98,19 +100,19 @@ IMPORTANT:
     }
 
     # Edit command
-    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Access database")
+    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in PowerPoint document")
     encoding_group = edit_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading VBA files (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files",
+        help="Auto-detect input encoding for VBA files exported from PowerPoint document",
     )
     edit_parser.add_argument(
         "--save-headers",
@@ -119,16 +121,16 @@ IMPORTANT:
     )
 
     # Import command
-    import_parser = subparsers.add_parser("import", help="Import VBA content into Access database")
+    import_parser = subparsers.add_parser("import", help="Import VBA content into PowerPoint document")
     import_parser.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when writing VBA files (default: {default_encoding})",
+        help=f"Encoding to be used when writing VBA files back into PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
 
     # Export command
-    export_parser = subparsers.add_parser("export", help="Export VBA content from Access database")
+    export_parser = subparsers.add_parser("export", help="Export VBA content from PowerPoint document")
     export_parser.add_argument(
         "--save-metadata",
         "-m",
@@ -139,14 +141,14 @@ IMPORTANT:
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading VBA files (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files",
+        help="Auto-detect input encoding for VBA files exported from PowerPoint document",
     )
     export_parser.add_argument(
         "--save-headers",
@@ -157,11 +159,7 @@ IMPORTANT:
     # Check command
     check_parser = subparsers.add_parser(
         "check",
-        help="Check if the MS Access VBA project object model' is accessible",
-    )
-    # Add --version argument to the main parser
-    check_parser.add_argument(
-        "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
+        help="Check if 'Trust Access to the MS PowerPoint VBA project object model' is enabled",
     )
     check_parser.add_argument(
         "--verbose",
@@ -186,86 +184,37 @@ IMPORTANT:
     return parser
 
 
-def check_multiple_databases(file_path: str = None) -> None:
-    """Check for multiple open databases and handle appropriately.
+def validate_paths(args: argparse.Namespace) -> None:
+    """Validate file and directory paths from command line arguments."""
+    if args.file and not Path(args.file).exists():
+        raise FileNotFoundError(f"Document not found: {args.file}")
 
-    Args:
-        file_path: Optional path to specific database file
-
-    Raises:
-        VBAError: If multiple databases are open and no specific file is provided
-    """
-    try:
-        import win32com.client
-
-        app = win32com.client.GetObject("Access.Application")
-        try:
-            # Get current database
-            current_db = app.CurrentDb()
-            if not current_db:
-                # No database open
-                return
-
-            # Check for other open databases using a more reliable method
-            try:
-                current_name = current_db.Name
-                open_dbs = []
-
-                # Check each database connection directly
-                for i in range(app.DBEngine.Workspaces(0).Databases.Count):
-                    try:
-                        db = app.DBEngine.Workspaces(0).Databases(i)
-                        if db and db.Name != current_name:
-                            open_dbs.append(db.Name)
-                    except Exception:
-                        continue
-
-                if open_dbs and not file_path:
-                    raise VBAError(
-                        "Multiple Access databases are open. Please specify the target "
-                        "database using the --file option."
-                    )
-            except AttributeError:
-                # DBEngine or Workspaces not accessible, consider it a single database
-                logger.debug("Could not enumerate databases, assuming single database")
-                return
-
-        except Exception as e:
-            logger.debug(f"Error checking current database: {e}")
-            return
-
-    except Exception:
-        # Only log at debug level since this is a non-critical check
-        logger.debug("Could not check for multiple databases - Access may not be running")
-        return
+    if args.vba_directory:
+        vba_dir = Path(args.vba_directory)
+        if not vba_dir.exists():
+            logger.info(f"Creating VBA directory: {vba_dir}")
+            vba_dir.mkdir(parents=True, exist_ok=True)
 
 
-def handle_access_vba_command(args: argparse.Namespace) -> None:
-    """Handle the access-vba command execution."""
+def handle_powerpoint_vba_command(args: argparse.Namespace) -> None:
+    """Handle the powerpoint-vba command execution."""
     try:
         # Initialize logging
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-        logger.debug(f"Starting access-vba command: {args.command}")
+        logger.debug(f"Starting powerpoint-vba command: {args.command}")
         logger.debug(f"Command arguments: {vars(args)}")
 
-        # Check for multiple open databases and handle appropriately
-        try:
-            check_multiple_databases(args.file)
-        except VBAError as e:
-            logger.error(str(e))
-            sys.exit(1)
-
-        # Get document path and active database path
+        # Get document path and active document path
         active_doc = None
         if not args.file:
             try:
-                active_doc = get_active_office_document("access")
+                active_doc = get_active_office_document("powerpoint")
             except ApplicationError:
                 pass
 
         try:
             doc_path, vba_dir = get_document_paths(args.file, active_doc, args.vba_directory)
-            logger.info(f"Using database: {doc_path}")
+            logger.info(f"Using document: {doc_path}")
             logger.debug(f"Using VBA directory: {vba_dir}")
         except (DocumentNotFoundError, PathError) as e:
             logger.error(f"Failed to resolve paths: {str(e)}")
@@ -277,7 +226,7 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
 
         # Create handler instance
         try:
-            handler = AccessVBAHandler(
+            handler = PowerPointVBAHandler(
                 doc_path=str(doc_path),
                 vba_dir=str(vba_dir),
                 encoding=encoding,
@@ -285,32 +234,34 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
                 save_headers=getattr(args, "save_headers", False),
             )
         except VBAError as e:
-            logger.error(f"Failed to initialize Access VBA handler: {str(e)}")
+            logger.error(f"Failed to initialize PowerPoint VBA handler: {str(e)}")
             sys.exit(1)
 
         # Execute requested command
         logger.info(f"Executing command: {args.command}")
         try:
             if args.command == "edit":
+                # Display warning about module deletion
                 print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
-                print("NOTE: The database will remain open - close it manually when finished.")
+                # For edit command, first export without overwriting
                 handler.export_vba(overwrite=False)
                 try:
                     handler.watch_changes()
                 except (DocumentClosedError, RPCError) as e:
                     logger.error(str(e))
-                    logger.info("Edit session terminated. Please restart Access and the tool to continue editing.")
+                    logger.info("Edit session terminated. Please restart PowerPoint and the tool to continue editing.")
                     sys.exit(1)
             elif args.command == "import":
                 handler.import_vba()
             elif args.command == "export":
+                # For export command, always overwrite
                 handler.export_vba(save_metadata=getattr(args, "save_metadata", False), overwrite=True)
         except (DocumentClosedError, RPCError) as e:
             logger.error(str(e))
             sys.exit(1)
         except VBAAccessError as e:
             logger.error(str(e))
-            logger.error("Please check Access Trust Center Settings and try again.")
+            logger.error("Please check PowerPoint Trust Center Settings and try again.")
             sys.exit(1)
         except VBAError as e:
             logger.error(f"VBA operation failed: {str(e)}")
@@ -334,7 +285,7 @@ def handle_access_vba_command(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    """Main entry point for the access-vba CLI."""
+    """Main entry point for the powerpoint-vba CLI."""
     try:
         parser = create_cli_parser()
         args = parser.parse_args()
@@ -347,12 +298,12 @@ def main() -> None:
             try:
                 from vba_edit.utils import check_vba_trust_access
 
-                check_vba_trust_access("access")
+                check_vba_trust_access("powerpoint")
             except Exception as e:
                 logger.error(f"Failed to check Trust Access to MS Access VBA project object model: {str(e)}")
             sys.exit(0)
         else:
-            handle_access_vba_command(args)
+            handle_powerpoint_vba_command(args)
     except Exception as e:
         print(f"Critical error: {str(e)}", file=sys.stderr)
         sys.exit(1)
