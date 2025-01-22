@@ -1538,7 +1538,7 @@ class PowerPointVBAHandler(OfficeVBAHandler):
                 logger.info("Presentation has been saved and left open for further editing")
             except Exception as e:
                 if check_rpc_error(e):
-                    raise RPCError(self.app_name)
+                    raise RPCError(self.app_name) from e
                 raise VBAError("Failed to save presentation") from e
 
     def _update_document_module(self, name: str, code: str, components: Any) -> None:
