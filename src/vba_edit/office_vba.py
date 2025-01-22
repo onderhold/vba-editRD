@@ -1511,17 +1511,15 @@ class PowerPointVBAHandler(OfficeVBAHandler):
     def _open_document_impl(self) -> Any:
         """Implementation-specific presentation opening logic."""
         try:
-            presentation = self.app.Presentations.Open(str(self.doc_path))
-
-            # # Check if presentation is read-only and raise error if so
-            # # also sys.exit(1) to stop the execution
-            # does not work
-
-            # if self.document_is_read_only():
-            #     raise DocumentIsReadOnlyError(self.document_type)
-            #     sys.exit(1)
-
-            return presentation
+            # Check if presentation is already open in app
+            for pres in self.app.Presentations:
+                if str(self.doc_path) == pres.FullName:
+                    logger.debug("Using already open presentation")
+                    return pres
+                    
+            # If not found, open it
+            logger.debug(f"Opening presentation: {self.doc_path}")
+            return self.app.Presentations.Open(str(self.doc_path))
 
         except Exception as e:
             raise VBAError(f"Failed to open presentation: {str(e)}") from e
