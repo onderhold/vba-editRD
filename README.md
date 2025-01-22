@@ -12,7 +12,7 @@ Enable seamless Microsoft Office VBA code editing in your preferred editor or ID
 
 - Edit VBA code in your favorite code editor or IDE
 - Automatically sync changes between your editor and Office applications
-- Support for Word, Excel, Access and PowerPoint
+- Support for Word, Excel, Access, and PowerPoint
 - Preserve form layouts and module properties
 - Handle different character encodings
 - Integration with version control systems
