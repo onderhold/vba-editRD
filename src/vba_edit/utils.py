@@ -375,7 +375,7 @@ def get_active_office_document(app_type: str) -> str:
         elif app_type == "powerpoint":
             if not app.Windows.Count:
                 raise ApplicationError("No PowerPoint presentation is currently open")
-            
+
             # Get underlying presentation even if in slideshow mode
             if app.SlideShowWindows.Count > 0:
                 active_doc = app.SlideShowWindows(1).View.Presentation
@@ -384,10 +384,10 @@ def get_active_office_document(app_type: str) -> str:
                 if not active_window:
                     raise ApplicationError("No active PowerPoint window found")
                 active_doc = active_window.Presentation
-            
+
             if not active_doc:
                 raise ApplicationError("Could not get active PowerPoint presentation")
-            
+
             return active_doc.FullName
 
         # Handle Word, Excel, and PowerPoint

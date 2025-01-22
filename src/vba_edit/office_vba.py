@@ -1144,6 +1144,8 @@ class OfficeVBAHandler(ABC):
                     logger.error(f"Failed to export component {component.Name}: {str(e)}")
                     continue
 
+            self._check_form_safety(self.vba_dir)  # Check for forms before proceeding
+
             # Save metadata if requested
             if save_metadata:
                 logger.debug("Saving metadata...")
@@ -1516,7 +1518,7 @@ class PowerPointVBAHandler(OfficeVBAHandler):
                 if str(self.doc_path) == pres.FullName:
                     logger.debug("Using already open presentation")
                     return pres
-                    
+
             # If not found, open it
             logger.debug(f"Opening presentation: {self.doc_path}")
             return self.app.Presentations.Open(str(self.doc_path))
