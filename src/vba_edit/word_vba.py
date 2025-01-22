@@ -176,8 +176,10 @@ IMPORTANT:
     )
 
     check_subparser = check_parser.add_subparsers(dest="subcommand", required=False)
-    check_subparser.add_parser("all", help="Check Trust Access to VBA project model of all suported Office applications")
-    
+    check_subparser.add_parser(
+        "all", help="Check Trust Access to VBA project model of all suported Office applications"
+    )
+
     # Add common arguments to all subparsers (except check command)
     subparser_list = [edit_parser, import_parser, export_parser]
     for subparser in subparser_list:
@@ -299,11 +301,12 @@ def main() -> None:
         # Run 'check' command (Check if VBA project model is accessible )
         if args.command == "check":
             from vba_edit.utils import check_vba_trust_access
+
             try:
                 if args.subcommand == "all":
-                    check_vba_trust_access() # Check all supported Office applications
+                    check_vba_trust_access()  # Check all supported Office applications
                 else:
-                    check_vba_trust_access("word") # Check MS Word only
+                    check_vba_trust_access("word")  # Check MS Word only
             except Exception as e:
                 logger.error(f"Failed to check Trust Access to VBA project object model: {str(e)}")
             sys.exit(0)
