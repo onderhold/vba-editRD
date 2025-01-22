@@ -1112,33 +1112,33 @@ class OfficeVBAHandler(ABC):
                 logger.info(f"No VBA components found in the {self.document_type}.")
                 return
 
-            # Get and log component information
-            component_list = []
-            for component in components:
-                info = self.component_handler.get_component_info(component)
-                component_list.append(info)
-
-            logger.info(f"\nFound {len(component_list)} VBA components:")
-            for comp in component_list:
-                logger.info(f"  - {comp['name']} ({comp['type_name']}, {comp['code_lines']} lines)")
-
-            # Export components
+            # Track exported files for metadata
             encoding_data = {}
+
             for component in components:
                 try:
                     info = self.component_handler.get_component_info(component)
-                    # Use resolve_path for component file path
-                    final_file = resolve_path(f"{info['name']}{info['extension']}", self.vba_dir)
+                    base_name = info["name"]
+                    final_file = resolve_path(f"{base_name}{info['extension']}", self.vba_dir)
+                    header_file = resolve_path(f"{base_name}.header", self.vba_dir) if self.save_headers else None
 
-                    if not overwrite and final_file.exists():
-                        if info["type"] != VBATypes.VBEXT_CT_DOCUMENT or (
-                            info["type"] == VBATypes.VBEXT_CT_DOCUMENT and info["code_lines"] == 0
-                        ):
-                            logger.debug(f"Skipping existing file: {final_file}")
-                            continue
+                    # Handle both code and header files
+                    files_to_check = [(final_file, False)]
+                    if header_file:
+                        files_to_check.append((header_file, True))
 
-                    self.export_component(component, self.vba_dir)
-                    encoding_data[info["name"]] = {"encoding": self.encoding, "type": info["type_name"]}
+                    # Check each file
+                    should_export = False
+                    for file_path, is_header in files_to_check:
+                        if overwrite or not file_path.exists():
+                            should_export = True
+                            break
+
+                    if should_export:
+                        self.export_component(component, self.vba_dir)
+                        encoding_data[info["name"]] = {"encoding": self.encoding, "type": info["type_name"]}
+                    else:
+                        logger.debug(f"Skipping existing file: {final_file}")
 
                 except Exception as e:
                     logger.error(f"Failed to export component {component.Name}: {str(e)}")
