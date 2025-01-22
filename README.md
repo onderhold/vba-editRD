@@ -96,7 +96,7 @@ The package provides separate command-line tools for each Office application:
 - `access-vba`
 - `powerpoint-vba`
 
-Each tool supports three main commands (plus 'check' for troubleshooting):
+Each tool supports three main commands (plus `check {all}` for troubleshooting):
 
 - `edit`: Live sync between editor and Office (Word/Excel only)
 - `export`: Export VBA modules to files
@@ -104,8 +104,8 @@ Each tool supports three main commands (plus 'check' for troubleshooting):
 - `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
 > [!NOTE]
-> In addition, the command `python -m vba_edit.utils` can be used to troubleshoot Trust Access to VBA project object model, 
-> scanning and giving feedback on all supported MS Office apps
+> The command `check all` can be used to troubleshoot Trust Access to VBA project object model, 
+> scanning and giving feedback on **all supported MS Office apps**
 
 ### Common Options
 
