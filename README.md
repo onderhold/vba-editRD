@@ -12,7 +12,7 @@ Enable seamless Microsoft Office VBA code editing in your preferred editor or ID
 
 - Edit VBA code in your favorite code editor or IDE
 - Automatically sync changes between your editor and Office applications
-- Support for Word, Excel, and Access (PowerPoint support coming in v0.4.0)
+- Support for Word, Excel, Access and PowerPoint
 - Preserve form layouts and module properties
 - Handle different character encodings
 - Integration with version control systems
@@ -138,9 +138,9 @@ excel-vba edit -x  # Use xlwings wrapper
 
 ## Known Limitations
 
-- UserForms require `--save-headers` option
-- PowerPoint support coming in v0.4.0
-- `--in-file-headers` option coming soon
+- UserForms require `--save-headers` option (`edit` process is aborted if this is not the case)
+- If `*.header` files are modified on their own, the corresponding `*.cls`, `*.bas` or `*.frm` file needs to be saved in order to sync the complete module back into the VBA project model
+- `--in-file-headers` option coming soon (thanks to @cargocultprogramming for suggestion and use case context)
 
 ## Links
 
