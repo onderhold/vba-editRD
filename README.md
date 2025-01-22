@@ -48,9 +48,9 @@ Enable "Trust access to the VBA project object model" in your Office application
 1. Open your Excel workbook with VBA code
 2. In your terminal, run:
 
-```bash
-excel-vba edit
-```
+    ```bash
+    excel-vba edit
+    ```
 
 3. Edit the exported .bas, .cls, or .frm files in your preferred editor
 4. Changes are automatically synced back to Excel when you save
@@ -104,7 +104,7 @@ Each tool supports three main commands (plus `check {all}` for troubleshooting):
 - `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
 > [!NOTE]
-> The command `check all` can be used to troubleshoot Trust Access to VBA project object model, 
+> The command `check all` can be used to troubleshoot Trust Access to VBA project object model,
 > scanning and giving feedback on **all supported MS Office apps**
 
 ### Common Options
