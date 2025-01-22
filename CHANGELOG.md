@@ -9,13 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support for macro-enabled MS PowerPoint documents
 - Option to show program's version number and exit added to all cli interfaces (`--version`)
+- `check all` subcommand for cli entry points, which processes all suported MS Office apps in a single call (replaces calling `python -m vba_edit.utils`)
 <!-- ### Changed -->
 <!-- -  -->
 
 ### Fixed
 
-- 
+- fix check for form safety on `export` (if edit command is run without `--save-headers` option, forms cannot be processed correctly -> check for forms and abort if `--save-headers` is not enabled)
+- fix header file handling (`--save-headers`) in already populated `--vba-directory` (only 1 header file was created rather than one per *.cls, *.bas or *.frm file) - calling it on empty `--vba-directory` worked as expected
 
 <!-- -  -->
 <!-- ### Removed -->

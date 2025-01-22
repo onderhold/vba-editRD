@@ -12,7 +12,7 @@ Enable seamless Microsoft Office VBA code editing in your preferred editor or ID
 
 - Edit VBA code in your favorite code editor or IDE
 - Automatically sync changes between your editor and Office applications
-- Support for Word, Excel, and Access (PowerPoint support coming in v0.4.0)
+- Support for Word, Excel, Access, and PowerPoint
 - Preserve form layouts and module properties
 - Handle different character encodings
 - Integration with version control systems
@@ -48,9 +48,9 @@ Enable "Trust access to the VBA project object model" in your Office application
 1. Open your Excel workbook with VBA code
 2. In your terminal, run:
 
-```bash
-excel-vba edit
-```
+    ```bash
+    excel-vba edit
+    ```
 
 3. Edit the exported .bas, .cls, or .frm files in your preferred editor
 4. Changes are automatically synced back to Excel when you save
@@ -94,8 +94,9 @@ The package provides separate command-line tools for each Office application:
 - `word-vba`
 - `excel-vba`
 - `access-vba`
+- `powerpoint-vba`
 
-Each tool supports three main commands (plus 'check' for troubleshooting):
+Each tool supports three main commands (plus `check {all}` for troubleshooting):
 
 - `edit`: Live sync between editor and Office (Word/Excel only)
 - `export`: Export VBA modules to files
@@ -103,8 +104,8 @@ Each tool supports three main commands (plus 'check' for troubleshooting):
 - `check`: Check if 'Trust Access to the VBA project object model' is enabled
 
 > [!NOTE]
-> In addition, the command `python -m vba_edit.utils` can be used to troubleshoot Trust Access to VBA project object model, 
-> scanning and giving feedback on all supported MS Office apps
+> The command `check all` can be used to troubleshoot Trust Access to VBA project object model,
+> scanning and giving feedback on **all supported MS Office apps**
 
 ### Common Options
 
@@ -137,9 +138,9 @@ excel-vba edit -x  # Use xlwings wrapper
 
 ## Known Limitations
 
-- UserForms require `--save-headers` option
-- PowerPoint support coming in v0.4.0
-- `--in-file-headers` option coming soon
+- UserForms require `--save-headers` option (`edit` process is aborted if this is not the case)
+- If `*.header` files are modified on their own, the corresponding `*.cls`, `*.bas` or `*.frm` file needs to be saved in order to sync the complete module back into the VBA project model
+- `--in-file-headers` option coming soon (thanks to @cargocultprogramming for suggestion and use case context)
 
 ## Links
 
