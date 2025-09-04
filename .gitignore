@@ -9,6 +9,15 @@ __pycache__/
 # macOS metadata
 .DS_Store
 
+# Windows metadata
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+
 # VBA export files
 *.bas
 *.cls
@@ -61,6 +70,12 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Translations
 *.mo
@@ -136,6 +151,8 @@ celerybeat.pid
 env/
 venv/
 ENV/
+.env/
+.venv/
 env.bak/
 venv.bak/
 

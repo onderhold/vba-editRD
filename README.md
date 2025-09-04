@@ -141,6 +141,101 @@ excel-vba edit -x  # Use xlwings wrapper
 - PowerPoint support coming in v0.4.0
 - `--in-file-headers` option coming soon
 
+## Development Setup
+### Prerequisites
+- Python 3.9 or higher
+- Windows (required for COM interface with MS Office)
+- Git
+
+### Initial Setup
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd vba-editRD
+```
+
+2. Create and activate a virtual environment:
+```shell
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# or
+source .venv/bin/activate  # Linux/macOS
+```
+
+or in VS Code, 
+- open command palette (CTRL-SHIFT-P)
+- search for: "Python: Create Environment..."
+- select: Venv
+- choose Python interpreter (recommended: Python 3.9+)
+
+
+3. Install the package in development mode:
+```shell
+pip install -e .[dev]
+```
+
+This installs the package with all development dependencies including:
+- Testing tools (pytest, pytest-cov)
+- Code formatting (black, ruff)
+- Build tools (pyinstaller, wheel, twine)
+
+### Git Configuration
+
+The repository already includes a comprehensive [`.gitignore`](.gitignore) that covers:
+- Virtual environments (`.venv/`, `venv/`)
+- Build artifacts (`build/`, `dist/`, `*.egg-info/`)
+- Python cache files (`__pycache__/`, `*.pyc`)
+- Test artifacts (`.pytest_cache/`, `.coverage`, `htmlcov/`)
+- IDE files (`.vscode/`, `.idea/`)
+- Log files (`*.log` - includes `vba_edit.log`, `vba_trust_access.log`)
+- PyInstaller specs (`*.spec`)
+
+No additional `.gitignore` configuration is needed.
+
+## Development Workflow
+### Running Tests
+```shell
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Run only unit tests
+pytest -m "not integration"
+
+# Run specific test file
+pytest tests/test_cli.py -v
+```
+
+### Code Formatting and Linting
+```shell
+# Format code with black
+black src tests
+
+# Lint with ruff
+ruff check src tests
+
+# Fix linting issues automatically
+ruff check --fix src tests
+```
+
+### Testing CLI Commands
+```shell
+word-vba --help
+excel-vba --help
+access-vba --help
+
+# Test check functionality
+python -m vba_edit.utils
+```
+
+### Creating Binaries
+```shell
+# Create standalone executables
+python create_binaries.py
+```
+
 ## Links
 
 - [Homepage](https://langui.ch/current-projects/vba-edit/)
