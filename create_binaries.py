@@ -25,9 +25,22 @@ excel_vba_args = [
     src_dir,  # Add src directory to Python path
 ]
 
-# Create both executables
-print("Building word_vba.exe...")
+# Build Access VBA executable
+access_vba_args = [
+    os.path.join(src_dir, "access_vba.py"),  # Full path to entry point
+    "--onefile",
+    "--name=access-vba",
+    "--clean",
+    "--paths",
+    src_dir,  # Add src directory to Python path
+]
+
+# Create executables
+print("Building word-vba.exe...")
 run(word_vba_args)
 
-print("Building excel_vba.exe...")
+print("Building excel-vba.exe...")
 run(excel_vba_args)
+
+print("Building access-vba.exe...")
+run(access_vba_args)

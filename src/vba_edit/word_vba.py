@@ -70,6 +70,11 @@ IMPORTANT:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # Add --version argument to the main parser
+    parser.add_argument(
+        "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Create parsers for each command with common arguments
@@ -87,6 +92,10 @@ IMPORTANT:
                 "const": "vba_edit.log",
                 "help": "Enable logging to file. Optional path can be specified (default: vba_edit.log)",
             },
+        ),
+        "version": (
+            ["--version"],
+            {"action": "version", "version": f"{package_name_formatted} v{package_version} ({entry_point_name})"},
         ),
     }
 
@@ -164,6 +173,11 @@ IMPORTANT:
         nargs="?",
         const="vba_edit.log",
         help="Enable logging to file. Optional path can be specified (default: vba_edit.log)",
+    )
+
+    check_subparser = check_parser.add_subparsers(dest="subcommand", required=False)
+    check_subparser.add_parser(
+        "all", help="Check Trust Access to VBA project model of all suported Office applications"
     )
 
     # Add common arguments to all subparsers (except check command)
@@ -284,14 +298,17 @@ def main() -> None:
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 
-        # Run 'check' command (Check if Access VBA project model is accessible )
+        # Run 'check' command (Check if VBA project model is accessible )
         if args.command == "check":
-            try:
-                from vba_edit.utils import check_vba_trust_access
+            from vba_edit.utils import check_vba_trust_access
 
-                check_vba_trust_access("word")
+            try:
+                if args.subcommand == "all":
+                    check_vba_trust_access()  # Check all supported Office applications
+                else:
+                    check_vba_trust_access("word")  # Check MS Word only
             except Exception as e:
-                logger.error(f"Failed to check Trust Access to MS Access VBA project object model: {str(e)}")
+                logger.error(f"Failed to check Trust Access to VBA project object model: {str(e)}")
             sys.exit(0)
         else:
             handle_word_vba_command(args)

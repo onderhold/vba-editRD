@@ -136,22 +136,36 @@ class VBADocumentNames:
         "ЭтотДокумент",  # Russian
     }
 
+    # PowerPoint slide module prefixes
+    POWERPOINT_SLIDE_PREFIXES = {
+        "Slide",  # English
+        "Folie",  # German
+        "Diapo",  # French
+        "Diapositiva",  # Spanish/Italian
+        "Slide",  # Portuguese
+        "スライド",  # Japanese
+        "投影片",  # Chinese Traditional
+        "幻灯片",  # Chinese Simplified
+        "슬라이드",  # Korean
+        "Слайд",  # Russian
+    }
+
     @classmethod
     def is_document_module(cls, name: str) -> bool:
-        """Check if a name matches any known document module name.
-
-        Args:
-            name: Name to check
-
-        Returns:
-            bool: True if name matches any known document module name
-        """
-        # Direct match for workbook/document
+        """Check if a name matches any known document module name."""
+        # Handle standard document modules (Excel/Word)
         if name in cls.EXCEL_WORKBOOK_NAMES or name in cls.WORD_DOCUMENT_NAMES:
             return True
 
-        # Check for sheet names with numbers
-        return any(name.startswith(prefix) and name[len(prefix) :].isdigit() for prefix in cls.EXCEL_SHEET_PREFIXES)
+        # Handle Excel sheets
+        if any(name.startswith(prefix) and name[len(prefix) :].isdigit() for prefix in cls.EXCEL_SHEET_PREFIXES):
+            return True
+
+        # Handle PowerPoint slides
+        if any(name.startswith(prefix) and name[len(prefix) :].isdigit() for prefix in cls.POWERPOINT_SLIDE_PREFIXES):
+            return True
+
+        return False
 
 
 # VBA type definitions and constants
@@ -1098,37 +1112,39 @@ class OfficeVBAHandler(ABC):
                 logger.info(f"No VBA components found in the {self.document_type}.")
                 return
 
-            # Get and log component information
-            component_list = []
-            for component in components:
-                info = self.component_handler.get_component_info(component)
-                component_list.append(info)
-
-            logger.info(f"\nFound {len(component_list)} VBA components:")
-            for comp in component_list:
-                logger.info(f"  - {comp['name']} ({comp['type_name']}, {comp['code_lines']} lines)")
-
-            # Export components
+            # Track exported files for metadata
             encoding_data = {}
+
             for component in components:
                 try:
                     info = self.component_handler.get_component_info(component)
-                    # Use resolve_path for component file path
-                    final_file = resolve_path(f"{info['name']}{info['extension']}", self.vba_dir)
+                    base_name = info["name"]
+                    final_file = resolve_path(f"{base_name}{info['extension']}", self.vba_dir)
+                    header_file = resolve_path(f"{base_name}.header", self.vba_dir) if self.save_headers else None
 
-                    if not overwrite and final_file.exists():
-                        if info["type"] != VBATypes.VBEXT_CT_DOCUMENT or (
-                            info["type"] == VBATypes.VBEXT_CT_DOCUMENT and info["code_lines"] == 0
-                        ):
-                            logger.debug(f"Skipping existing file: {final_file}")
-                            continue
+                    # Handle both code and header files
+                    files_to_check = [(final_file, False)]
+                    if header_file:
+                        files_to_check.append((header_file, True))
 
-                    self.export_component(component, self.vba_dir)
-                    encoding_data[info["name"]] = {"encoding": self.encoding, "type": info["type_name"]}
+                    # Check each file
+                    should_export = False
+                    for file_path, is_header in files_to_check:
+                        if overwrite or not file_path.exists():
+                            should_export = True
+                            break
+
+                    if should_export:
+                        self.export_component(component, self.vba_dir)
+                        encoding_data[info["name"]] = {"encoding": self.encoding, "type": info["type_name"]}
+                    else:
+                        logger.debug(f"Skipping existing file: {final_file}")
 
                 except Exception as e:
                     logger.error(f"Failed to export component {component.Name}: {str(e)}")
                     continue
+
+            self._check_form_safety(self.vba_dir)  # Check for forms before proceeding
 
             # Save metadata if requested
             if save_metadata:
@@ -1449,3 +1465,99 @@ class AccessVBAHandler(OfficeVBAHandler):
             if check_rpc_error(e):
                 raise RPCError(self.app_name)
             raise DocumentClosedError(self.document_type)
+
+
+class PowerPointVBAHandler(OfficeVBAHandler):
+    """Microsoft PowerPoint specific implementation of VBA operations.
+
+    PowerPoint has a unique VBA project structure:
+    - No document-level module (unlike Word's ThisDocument or Excel's ThisWorkbook)
+    - Each slide has its own module (e.g., "Slide1", "Slide2")
+    - Standard modules, class modules, and forms work the same as other Office apps
+    """
+
+    @property
+    def app_name(self) -> str:
+        """Name of the Office application."""
+        return "PowerPoint"
+
+    @property
+    def app_progid(self) -> str:
+        """ProgID for COM automation."""
+        return "PowerPoint.Application"
+
+    def get_document_module_name(self) -> str:
+        """Get the name of the presentation module.
+
+        PowerPoint has no document-level module, so return empty string.
+        """
+        return ""
+
+    def document_is_read_only(self) -> bool:
+        """Check if the PowerPoint presentation is read-only.
+
+        PowerPoint doesn't have a direct read-only flag, so we check if the
+        presentation is protected for editing.
+
+        Returns:
+            bool: True if the presentation is read-only
+        """
+        try:
+            # Check if presentation is read-only
+            if self.doc.ReadOnly:
+                logger.warning("\nPresentation is opened in read-only mode!")
+            return True
+        except Exception as e:
+            raise VBAError("Failed to check if presentation is read-only") from e
+
+    def _open_document_impl(self) -> Any:
+        """Implementation-specific presentation opening logic."""
+        try:
+            # Check if presentation is already open in app
+            for pres in self.app.Presentations:
+                if str(self.doc_path) == pres.FullName:
+                    logger.debug("Using already open presentation")
+                    return pres
+
+            # If not found, open it
+            logger.debug(f"Opening presentation: {self.doc_path}")
+            return self.app.Presentations.Open(str(self.doc_path))
+
+        except Exception as e:
+            raise VBAError(f"Failed to open presentation: {str(e)}") from e
+
+    def save_document(self) -> None:
+        """Save the presentation if it's open.
+
+        PowerPoint requires specific save handling different from Word/Excel.
+        """
+        if self.doc is not None:
+            try:
+                # PowerPoint uses Save() not SaveAs()
+                self.doc.Save()
+                logger.info("Presentation has been saved and left open for further editing")
+            except Exception as e:
+                if check_rpc_error(e):
+                    raise RPCError(self.app_name) from e
+                raise VBAError("Failed to save presentation") from e
+
+    def _update_document_module(self, name: str, code: str, components: Any) -> None:
+        """Update module code.
+
+        Since PowerPoint has no document module, this acts like a regular module update.
+        """
+        try:
+            component = components(name)
+
+            # Clear existing code
+            if component.CodeModule.CountOfLines > 0:
+                component.CodeModule.DeleteLines(1, component.CodeModule.CountOfLines)
+
+            # Add new code
+            if code.strip():
+                component.CodeModule.AddFromString(code)
+
+            logger.info(f"Updated module: {name}")
+
+        except Exception as e:
+            raise VBAError(f"Failed to update module {name}") from e

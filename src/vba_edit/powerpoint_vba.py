@@ -1,7 +1,5 @@
 import argparse
 import logging
-import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -9,16 +7,16 @@ from vba_edit import __name__ as package_name
 from vba_edit import __version__ as package_version
 from vba_edit.exceptions import (
     ApplicationError,
-    DocumentClosedError,
     DocumentNotFoundError,
+    DocumentClosedError,
     PathError,
-    VBAError,
-    VBAAccessError,
     RPCError,
+    VBAAccessError,
+    VBAError,
 )
-from vba_edit.office_vba import ExcelVBAHandler
+from vba_edit.office_vba import PowerPointVBAHandler
 from vba_edit.path_utils import get_document_paths
-from vba_edit.utils import setup_logging, get_windows_ansi_codepage, get_active_office_document
+from vba_edit.utils import get_active_office_document, get_windows_ansi_codepage, setup_logging
 
 
 # Configure module logger
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def create_cli_parser() -> argparse.ArgumentParser:
     """Create the command-line interface parser."""
-    entry_point_name = "excel-vba"
+    entry_point_name = "powerpoint-vba"
     package_name_formatted = package_name.replace("_", "-")
 
     # Get system default encoding
@@ -40,34 +38,34 @@ def create_cli_parser() -> argparse.ArgumentParser:
 
 A command-line tool suite for managing VBA content in MS Office documents.
 
-EXCEL-VBA allows you to edit, import, and export VBA content from Excel workbooks.
-If no file is specified, the tool will attempt to use the currently active Excel workbook.
+POWERPOINT-VBA allows you to edit, import, and export VBA content from PowerPoint documents.
+If no file is specified, the tool will attempt to use the currently active PowerPoint document.
 
 Commands:
-    edit    Edit VBA content in Excel workbook
-    import  Import VBA content into Excel workbook
-    export  Export VBA content from Excel workbook
-    check   Check if 'Trust access to the VBA project object model' is enabled in MS Excel
+    edit    Edit VBA content in MS PowerPoint document
+    import  Import VBA content into MS PowerPoint document
+    export  Export VBA content from MS PowerPoint document
+    check   Check if 'Trust Access to the MS PowerPoint VBA project object model' is enabled
 
 Examples:
-    excel-vba edit   <--- uses active Excel workbook and current directory for exported 
-                         VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
-                         active Excel workbook on save
+    powerpoint-vba edit    <--- uses active PowerPoint document and current directory for exported 
+                           VBA files (*.bas/*.cls/*.frm) & syncs changes back to the 
+                           active PowerPoint document on save
 
-    excel-vba import -f "C:/path/to/workbook.xlsm" --vba-directory "path/to/vba/files"
-    excel-vba export --file "C:/path/to/workbook.xlsm" --encoding cp850 --save-metadata
-    excel-vba edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
-    excel-vba edit --save-headers
+    powerpoint-vba import -f "C:/path/to/document.docx" --vba-directory "path/to/vba/files"
+    powerpoint-vba export --file "C:/path/to/document.docx" --encoding cp850 --save-metadata
+    powerpoint-vba edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+    powerpoint-vba edit --save-headers
 
 IMPORTANT: 
-           [!] It's early days. Use with care and backup your important macro-enabled
+           [!] It's early days. Use with care and backup your imortant macro-enabled
                MS Office documents before using them with this tool!
 
-               First tests have been very promising. Feedback appreciated via
+               First tests have been very promissing. Feedback appreciated via
                github issues. 
 
            [!] This tool requires "Trust access to the VBA project object model" 
-               enabled in Excel.
+               enabled in PowerPoint.
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -81,7 +79,7 @@ IMPORTANT:
 
     # Create parsers for each command with common arguments
     common_args = {
-        "file": (["--file", "-f"], {"help": "Path to Excel workbook (optional, defaults to active workbook)"}),
+        "file": (["--file", "-f"], {"help": "Path to PowerPoint document (optional, defaults to active workbook)"}),
         "vba_directory": (
             ["--vba-directory"],
             {"help": "Directory to export VBA files to (optional, defaults to current directory)"},
@@ -95,13 +93,6 @@ IMPORTANT:
                 "help": "Enable logging to file. Optional path can be specified (default: vba_edit.log)",
             },
         ),
-        "xlwings": (
-            ["--xlwings", "-x"],
-            {
-                "action": "store_true",
-                "help": "Use wrapper for xlwings vba edit|import|export commands",
-            },
-        ),
         "version": (
             ["--version"],
             {"action": "version", "version": f"{package_name_formatted} v{package_version} ({entry_point_name})"},
@@ -109,36 +100,37 @@ IMPORTANT:
     }
 
     # Edit command
-    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Excel workbook")
+    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in PowerPoint document")
     encoding_group = edit_parser.add_mutually_exclusive_group()
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading VBA files from Excel workbook (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files exported from Excel workbook",
+        help="Auto-detect input encoding for VBA files exported from PowerPoint document",
     )
     edit_parser.add_argument(
         "--save-headers",
         action="store_true",
         help="Save VBA component headers to separate .header files (default: False)",
     )
+
     # Import command
-    import_parser = subparsers.add_parser("import", help="Import VBA content into Excel workbook")
+    import_parser = subparsers.add_parser("import", help="Import VBA content into PowerPoint document")
     import_parser.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when writing VBA files back into Excel workbook (default: {default_encoding})",
+        help=f"Encoding to be used when writing VBA files back into PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
 
     # Export command
-    export_parser = subparsers.add_parser("export", help="Export VBA content from Excel workbook")
+    export_parser = subparsers.add_parser("export", help="Export VBA content from PowerPoint document")
     export_parser.add_argument(
         "--save-metadata",
         "-m",
@@ -149,14 +141,14 @@ IMPORTANT:
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading VBA files from Excel workbook (default: {default_encoding})",
+        help=f"Encoding to be used when reading VBA files from PowerPoint document (default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
         "--detect-encoding",
         "-d",
         action="store_true",
-        help="Auto-detect input encoding for VBA files exported from Excel workbook",
+        help="Auto-detect input encoding for VBA files exported from PowerPoint document",
     )
     export_parser.add_argument(
         "--save-headers",
@@ -167,7 +159,7 @@ IMPORTANT:
     # Check command
     check_parser = subparsers.add_parser(
         "check",
-        help="Check if 'Trust Access to the MS Excel VBA project object model' is enabled",
+        help="Check if 'Trust Access to the MS PowerPoint VBA project object model' is enabled",
     )
     check_parser.add_argument(
         "--verbose",
@@ -197,36 +189,37 @@ IMPORTANT:
     return parser
 
 
-def handle_excel_vba_command(args: argparse.Namespace) -> None:
-    """Handle the excel-vba command execution."""
+def validate_paths(args: argparse.Namespace) -> None:
+    """Validate file and directory paths from command line arguments."""
+    if args.file and not Path(args.file).exists():
+        raise FileNotFoundError(f"Document not found: {args.file}")
+
+    if args.vba_directory:
+        vba_dir = Path(args.vba_directory)
+        if not vba_dir.exists():
+            logger.info(f"Creating VBA directory: {vba_dir}")
+            vba_dir.mkdir(parents=True, exist_ok=True)
+
+
+def handle_powerpoint_vba_command(args: argparse.Namespace) -> None:
+    """Handle the powerpoint-vba command execution."""
     try:
         # Initialize logging
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-        logger.debug(f"Starting excel-vba command: {args.command}")
+        logger.debug(f"Starting powerpoint-vba command: {args.command}")
         logger.debug(f"Command arguments: {vars(args)}")
-
-        # Handle xlwings option if present
-        if args.xlwings:
-            try:
-                import xlwings
-
-                logger.info(f"Using xlwings {xlwings.__version__}")
-                handle_xlwings_command(args)
-                return
-            except ImportError:
-                sys.exit("xlwings is not installed. Please install it with: pip install xlwings")
 
         # Get document path and active document path
         active_doc = None
         if not args.file:
             try:
-                active_doc = get_active_office_document("excel")
+                active_doc = get_active_office_document("powerpoint")
             except ApplicationError:
                 pass
 
         try:
             doc_path, vba_dir = get_document_paths(args.file, active_doc, args.vba_directory)
-            logger.info(f"Using workbook: {doc_path}")
+            logger.info(f"Using document: {doc_path}")
             logger.debug(f"Using VBA directory: {vba_dir}")
         except (DocumentNotFoundError, PathError) as e:
             logger.error(f"Failed to resolve paths: {str(e)}")
@@ -238,7 +231,7 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
 
         # Create handler instance
         try:
-            handler = ExcelVBAHandler(
+            handler = PowerPointVBAHandler(
                 doc_path=str(doc_path),
                 vba_dir=str(vba_dir),
                 encoding=encoding,
@@ -246,31 +239,34 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
                 save_headers=getattr(args, "save_headers", False),
             )
         except VBAError as e:
-            logger.error(f"Failed to initialize Excel VBA handler: {str(e)}")
+            logger.error(f"Failed to initialize PowerPoint VBA handler: {str(e)}")
             sys.exit(1)
 
         # Execute requested command
         logger.info(f"Executing command: {args.command}")
         try:
             if args.command == "edit":
+                # Display warning about module deletion
                 print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
+                # For edit command, first export without overwriting
                 handler.export_vba(overwrite=False)
                 try:
                     handler.watch_changes()
                 except (DocumentClosedError, RPCError) as e:
                     logger.error(str(e))
-                    logger.info("Edit session terminated. Please restart Excel and the tool to continue editing.")
+                    logger.info("Edit session terminated. Please restart PowerPoint and the tool to continue editing.")
                     sys.exit(1)
             elif args.command == "import":
                 handler.import_vba()
             elif args.command == "export":
+                # For export command, always overwrite
                 handler.export_vba(save_metadata=getattr(args, "save_metadata", False), overwrite=True)
         except (DocumentClosedError, RPCError) as e:
             logger.error(str(e))
             sys.exit(1)
         except VBAAccessError as e:
             logger.error(str(e))
-            logger.error("Please check Excel Trust Center Settings and try again.")
+            logger.error("Please check PowerPoint Trust Center Settings and try again.")
             sys.exit(1)
         except VBAError as e:
             logger.error(f"VBA operation failed: {str(e)}")
@@ -293,54 +289,8 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         logger.debug("Command execution completed")
 
 
-def handle_xlwings_command(args):
-    """Handle command execution using xlwings wrapper."""
-
-    # Convert our args to xlwings command format
-    cmd = ["xlwings", "vba", args.command]
-
-    if args.file:
-        cmd.extend(["-f", args.file])
-    if args.verbose:
-        cmd.extend(["-v"])
-
-    # Store original directory
-    original_dir = None
-    try:
-        # Change to target directory if specified
-        if args.vba_directory:
-            original_dir = os.getcwd()
-            target_dir = Path(args.vba_directory)
-            # Create directory if it doesn't exist
-            target_dir.mkdir(parents=True, exist_ok=True)
-            os.chdir(str(target_dir))
-
-        # Execute xlwings command
-        result = subprocess.run(cmd, check=True)
-        sys.exit(result.returncode)
-
-    except subprocess.CalledProcessError as e:
-        sys.exit(e.returncode)
-    finally:
-        # Restore original directory if we changed it
-        if original_dir:
-            os.chdir(original_dir)
-
-
-def validate_paths(args: argparse.Namespace) -> None:
-    """Validate file and directory paths from command line arguments."""
-    if args.file and not Path(args.file).exists():
-        raise FileNotFoundError(f"Workbook not found: {args.file}")
-
-    if args.vba_directory:
-        vba_dir = Path(args.vba_directory)
-        if not vba_dir.exists():
-            logger.info(f"Creating VBA directory: {vba_dir}")
-            vba_dir.mkdir(parents=True, exist_ok=True)
-
-
 def main() -> None:
-    """Main entry point for the excel-vba CLI."""
+    """Main entry point for the powerpoint-vba CLI."""
     try:
         parser = create_cli_parser()
         args = parser.parse_args()
@@ -356,27 +306,12 @@ def main() -> None:
                 if args.subcommand == "all":
                     check_vba_trust_access()  # Check all supported Office applications
                 else:
-                    check_vba_trust_access("excel")  # Check MS Excel only
+                    check_vba_trust_access("powerpoint")  # Check MS PowerPoint only
             except Exception as e:
                 logger.error(f"Failed to check Trust Access to VBA project object model: {str(e)}")
             sys.exit(0)
-
-        # If xlwings option is used, check dependency before proceeding
-        elif args.xlwings:
-            try:
-                import xlwings
-
-                logger.info(f"Using xlwings {xlwings.__version__}")
-                handle_xlwings_command(args)
-            except ImportError:
-                sys.exit("xlwings is not installed. Please install it with: pip install xlwings")
         else:
-            handle_excel_vba_command(args)
-
-    except Exception as e:
-        print(f"Critical error: {str(e)}", file=sys.stderr)
-        sys.exit(1)
-
+            handle_powerpoint_vba_command(args)
     except Exception as e:
         print(f"Critical error: {str(e)}", file=sys.stderr)
         sys.exit(1)
