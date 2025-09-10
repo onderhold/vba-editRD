@@ -1,0 +1,70 @@
+# excel-vba.toml
+# Configuration file for the excel-vba CLI tool
+# Place this file in your working directory or specify its path with --conf
+
+[general]
+# Path to the Office document to work with
+file = "C:/Users/YourName/Documents/example.xlsx"
+
+# Directory to export/import VBA modules
+# either absolute path or relative to parent path of "file" setting
+vba_directory = "/vba-modules"
+
+# Encoding for reading/writing VBA files (e.g., "utf-8", "windows-1252")
+# valid codecs: see https://docs.python.org/3/library/codecs.html#standard-encodings
+# common for legacy VBA files on Windows is "windows-1252"
+encoding = "utf-8"
+
+# Automatically detect encoding if true
+detect_encoding = true
+
+# Save module headers (attributes) in separate files
+save_headers = false
+
+# Enable verbose logging
+verbose = true
+
+# Log output to a file (specify path or leave empty for no logfile)
+logfile = "C:/Users/YourName/excel-vba.log"
+
+# Use RubberduckVBA folder annotations for module organization
+rubberduck_folders = true
+
+# Run Office application in invisible mode (background, no window)
+invisible_mode = false
+
+# Execution mode: "export", "import", "sync"
+mode = "export"
+
+[office]
+# Office application to use ("excel", "word", "access")
+application = "excel"
+
+# Additional options for Office automation
+timeout_seconds = 60
+
+[excel]
+# Option to use xlwings for Excel operations (if installed)
+use_xlwings = false
+
+[advanced]
+# Custom document properties to export/import
+#export_custom_properties = true # planned
+
+# Export PowerQuery M code
+#export_powerquery = false # planned
+#pq_directory = "/pq-lib"  # planned
+# filename extension for PowerQuery M
+#pq_extension = # planned
+
+# Export additional Office document properties (e.g., XML parts, references)
+#export_document_properties = false # planned
+
+# Conflict resolution strategy: "last-writer-wins", "manual"
+#conflict_strategy = "last-writer-wins" # planned
+
+# Notify about unsaved status of the office file
+#notify_unsaved_changes = true # planned
+
+# Hash algorithm for module change detection ("md5", "sha256")
+#hash_algorithm = "sha256" # planned

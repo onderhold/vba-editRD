@@ -80,6 +80,9 @@ OFFICE_MACRO_EXTENSIONS: Dict[str, str] = {
 # Command-line entry points for different Office applications
 OFFICE_CLI_NAMES = {app: f"{app}-vba" for app in OFFICE_MACRO_EXTENSIONS.keys()}
 
+# Regex pattern for Rubberduck @Folder annotations
+RUBBERDUCK_FOLDER_PATTERN = re.compile(r"'\s*@folder\s*(?:\(\s*)?[\"']([^\"']+)[\"']\s*(?:\))?\s*$", re.IGNORECASE)
+
 # Currently supported apps in vba-edit
 # "access" is only partially supported at this stage and will be included
 # in list as soon as tests are adapted to handle it
@@ -228,6 +231,14 @@ class VBAComponentHandler:
     analyzing module types, handling headers, and preparing content for import/export
     operations. It serves as a utility class for the main Office-specific handlers.
     """
+
+    def __init__(self, use_rubberduck_folders: bool = False):
+        """Initialize the component handler.
+
+        Args:
+            use_rubberduck_folders: Whether to process Rubberduck folder annotations
+        """
+        self.use_rubberduck_folders = use_rubberduck_folders
 
     def get_component_info(self, component: Any) -> Dict[str, Any]:
         """Get detailed information about a VBA component.
@@ -479,6 +490,132 @@ class VBAComponentHandler:
             logger.error(f"Failed to update content for {component.Name}: {str(e)}")
             raise VBAError("Failed to update module content") from e
 
+    def get_rubberduck_folder(self, code: str) -> Tuple[str, str]:
+        """Find Rubberduck @Folder in VBA code.
+
+        Supports various Rubberduck annotation syntaxes:
+        - '@Folder "MyFolder"
+        - '@Folder("MyFolder")
+        - '@folder "My.Nested.Folder"
+        - Case insensitive matching
+
+        Only scans leading comment lines, stopping at the first non-comment/non-whitespace line,
+        or after finding the first folder annotation, just as RubberDuckVBA does.
+        Returns the folder path and the original code (unmodified).
+
+        Args:
+            code: VBA code content
+
+        Returns:
+            Tuple of (folder_path, code)
+        """
+        if not self.use_rubberduck_folders:
+            return "", code
+
+        lines = code.splitlines()
+        folder_path = ""
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("'"):
+                # Look for @Folder annotation
+                match = RUBBERDUCK_FOLDER_PATTERN.match(stripped)
+                if match:
+                    # Extract folder path and convert dot notation to filesystem path
+                    folder_path = match.group(1).replace(".", os.sep)
+                    # Found the folder annotation, no need to continue
+                    break
+                continue
+            # Stop at first non-comment/non-whitespace line
+            break
+
+        # Return the folder path and the original code
+        return folder_path, code
+
+    def add_rubberduck_folder(self, code: str, folder_path: str) -> str:
+        """Add Rubberduck @Folder annotation to VBA code.
+
+        If a @Folder annotation already exists, it will be updated with the new path.
+        If no annotation exists, a new one will be added.
+
+        Args:
+            code: VBA code content
+            folder_path: Folder path to add
+
+        Returns:
+            Code with @Folder annotation added or updated
+        """
+        if not self.use_rubberduck_folders or not folder_path:
+            return code
+
+        # Convert filesystem path to Rubberduck notation
+        rubberduck_path = folder_path.replace(os.sep, ".")
+        folder_annotation = f'\'@Folder("{rubberduck_path}")'
+
+        lines = code.splitlines()
+
+        # Find insertion point (after attributes, before actual code) and check for existing @Folder annotations
+        insert_index = 0
+        existing_folder_line = -1
+
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+
+            # Skip empty lines at the beginning
+            if not stripped:
+                continue
+
+            # Check if we're still in attributes section
+            if stripped.startswith("Attribute ") or stripped.startswith("VERSION ") or stripped.startswith("BEGIN"):
+                insert_index = i + 1
+                continue
+
+            # Check for existing @Folder annotation
+            if RUBBERDUCK_FOLDER_PATTERN.match(stripped):
+                existing_folder_line = i
+                continue
+
+            # This is where we want to insert if no existing annotation
+            if existing_folder_line == -1:
+                insert_index = i
+            break
+
+        # Update existing annotation or add new one
+        if existing_folder_line >= 0:
+            # Replace existing annotation
+            lines[existing_folder_line] = folder_annotation
+        else:
+            # Insert new annotation
+            lines.insert(insert_index, folder_annotation)
+
+        return "\n".join(lines)
+
+    def get_folder_from_file_path(self, file_path: Path, vba_base_dir: Path) -> str:
+        """Extract folder path from file system location.
+
+        Args:
+            file_path: Path to the VBA file
+            vba_base_dir: Base VBA directory
+
+        Returns:
+            Relative folder path
+        """
+        if not self.use_rubberduck_folders:
+            return ""
+
+        try:
+            relative_path = file_path.relative_to(vba_base_dir)
+            folder_path = str(relative_path.parent)
+
+            # Return empty string for root directory
+            if folder_path == ".":
+                return ""
+
+            return folder_path
+        except ValueError:
+            # File is not under vba_base_dir
+            return ""
+
 
 class OfficeVBAHandler(ABC):
     """Abstract base class for handling VBA operations across Office applications.
@@ -500,6 +637,7 @@ class OfficeVBAHandler(ABC):
         encoding (str): Character encoding for file operations
         verbose (bool): Verbose logging flag
         save_headers (bool): Header saving flag
+        use_rubberduck_folders (bool): Using Rubberduck folder structure flag
         app: Office application COM object
         doc: Office document COM object
         component_handler (VBAComponentHandler): Utility handler for VBA components
@@ -512,6 +650,7 @@ class OfficeVBAHandler(ABC):
         encoding: str = "cp1252",
         verbose: bool = False,
         save_headers: bool = False,
+        use_rubberduck_folders: bool = False,
     ):
         """Initialize the VBA handler."""
         try:
@@ -520,9 +659,10 @@ class OfficeVBAHandler(ABC):
             self.encoding = encoding
             self.verbose = verbose
             self.save_headers = save_headers
+            self.use_rubberduck_folders = use_rubberduck_folders
             self.app = None
             self.doc = None
-            self.component_handler = VBAComponentHandler()
+            self.component_handler = VBAComponentHandler(use_rubberduck_folders)
 
             # Configure logging
             log_level = logging.DEBUG if verbose else logging.INFO
@@ -532,6 +672,7 @@ class OfficeVBAHandler(ABC):
             logger.debug(f"VBA directory: {self.vba_dir}")
             logger.debug(f"Using encoding: {encoding}")
             logger.debug(f"Save headers: {save_headers}")
+            logger.debug(f"Rubberduck folders: {use_rubberduck_folders}")
 
         except DocumentNotFoundError:
             raise  # Let it propagate
@@ -737,11 +878,23 @@ class OfficeVBAHandler(ABC):
             # Split content
             header, code = self.component_handler.split_vba_content(content)
 
-            # Write files
-            self._write_component_files(name, header, code, info, directory)
-            logger.debug(f"Component files written for {name}")
+            # Extract Rubberduck folder if enabled
+            folder_path = ""
+            if self.use_rubberduck_folders:
+                folder_path, code = self.component_handler.get_rubberduck_folder(code)
 
-            logger.info(f"Exported: {name}")
+            # Determine target directory
+            target_directory = directory
+            if folder_path:
+                target_directory = directory / folder_path
+                target_directory.mkdir(parents=True, exist_ok=True)
+                logger.debug(f"Created folder structure: {target_directory}")
+
+            # Write files
+            self._write_component_files(name, header, code, info, target_directory)
+            logger.debug(f"Component files written for {name} in {target_directory}")
+
+            logger.info(f"Exported: {name}" + (f" (folder: {folder_path})" if folder_path else ""))
 
         except Exception as e:
             logger.error(f"Failed to export component {component.Name}: {str(e)}")
@@ -775,6 +928,13 @@ class OfficeVBAHandler(ABC):
 
             # Read code file
             code = self._read_code_file(file_path)
+
+            # Add Rubberduck folder annotation if enabled
+            if self.use_rubberduck_folders:
+                folder_path = self.component_handler.get_folder_from_file_path(file_path, self.vba_dir)
+                if folder_path:
+                    code = self.component_handler.add_rubberduck_folder(code, folder_path)
+                    logger.debug(f"Added @Folder annotation: {folder_path}")
 
             # Handle based on module type
             if module_type == VBAModuleType.DOCUMENT:
@@ -960,11 +1120,22 @@ class OfficeVBAHandler(ABC):
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
 
-            # Setup file watcher
-            watcher = RegExpWatcher(
-                self.vba_dir,
-                re_files=r"^.*\.(cls|frm|bas)$",
-            )
+            # Setup file watcher with recursive support if Rubberduck folders are enabled
+            if self.use_rubberduck_folders:
+                # Watch recursively
+                # TODO: watchgod does not support ignore_paths=None for recursive watching?
+                # TODO: make regex expression a global constant?
+                watcher = RegExpWatcher(
+                    self.vba_dir,
+                    re_files=r"^.*\.(cls|frm|bas)$",
+                    ignore_paths=None,  # Watch all subdirectories
+                )
+            else:
+                # Watch only the root directory
+                watcher = RegExpWatcher(
+                    self.vba_dir,
+                    re_files=r"^.*\.(cls|frm|bas)$",
+                )
 
             while True:
                 try:
@@ -1038,10 +1209,16 @@ class OfficeVBAHandler(ABC):
             vba_project = self.get_vba_project()
             components = vba_project.VBComponents
 
-            # Find all VBA files
+            # Find all VBA files, recursively if Rubberduck folders are enabled
             vba_files = []
-            for ext in [".cls", ".bas", ".frm"]:
-                vba_files.extend(self.vba_dir.glob(f"*{ext}"))
+            if self.use_rubberduck_folders:
+                # Search recursively
+                for ext in [".cls", ".bas", ".frm"]:
+                    vba_files.extend(self.vba_dir.rglob(f"*{ext}"))
+            else:
+                # Search only in root directory
+                for ext in [".cls", ".bas", ".frm"]:
+                    vba_files.extend(self.vba_dir.glob(f"*{ext}"))
 
             if not vba_files:
                 logger.info("No VBA files found to import.")
@@ -1049,7 +1226,8 @@ class OfficeVBAHandler(ABC):
 
             logger.info(f"\nFound {len(vba_files)} VBA files to import:")
             for vba_file in vba_files:
-                logger.info(f"  - {vba_file.name}")
+                relative_path = vba_file.relative_to(self.vba_dir)
+                logger.info(f"  - {relative_path}")
 
             # Import components
             for vba_file in vba_files:
