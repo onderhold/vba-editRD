@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- ### Security -->
 <!-- -  -->
 
-## [0.3.1-rd]
+## [0.3.1-rd] 2025-09-10
 
 ### Added
 
@@ -36,17 +36,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Streamlined project setup by extending pyproject.toml and .gitignore, while reducing requirements.txt to the bare minimum that VS Code needs. Thus setup.cfg became superfluous.
 - Some refactoring: handling common cli options now in separate module cli_common.py
-
-
-### Fixed
-
-- 
-
-<!-- -  -->
-<!-- ### Removed -->
-<!-- -  -->
-<!-- ### Security -->
-<!-- -  -->
 
 ## [0.3.0]
 

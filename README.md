@@ -1,12 +1,7 @@
-# vba-edit
+# vba-editRD
+This is a fork of [vba-edit](https://github.com/markuskiller/vba-edit), extended to optionally use RubberduckVBA folder annotations when importing/exporting from/to folder hierarchies.
 
-Enable seamless Microsoft Office VBA code editing in your preferred editor or IDE, facilitating the use of coding assistants and version control workflows.
-
-[![CI](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml/badge.svg)](https://github.com/markuskiller/vba-edit/actions/workflows/test.yaml)
-[![PyPI - Version](https://img.shields.io/pypi/v/vba-edit.svg)](https://pypi.org/project/vba-edit)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vba-edit.svg)](https://pypi.org/project/vba-edit)
-[![PyPI - Downloads](https://img.shields.io/pypi/dm/vba-edit)](https://pypi.org/project/vba-edit)
-[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
+[vba-edit](https://github.com/markuskiller/vba-edit) enables seamless Microsoft Office VBA code editing in your preferred editor or IDE, facilitating the use of coding assistants and version control workflows.
 
 ## Features
 
@@ -19,28 +14,16 @@ Enable seamless Microsoft Office VBA code editing in your preferred editor or ID
 - Support for UserForms and class modules
 - Optionally uses RubberduckVBA folder annotations when importing/exporting from/to folder hierarchies
 
-> [!NOTE]
-> Inspired by code from ``xlwings vba edit`` ([xlwings-Project](https://www.xlwings.org/)) under the BSD 3-Clause License.
-
 ## Quick Start
-
-### Installation
-
-```bash
-pip install vba-edit
-```
 
 ### Prerequisites
 
-Enable "Trust access to the VBA project object model" in your Office application's Trust Center Settings:
+Enable "Trust access to the VBA project object model" in your Office application's Trust Center settings:
 
 1. Open your Office application
 2. Go to File > Options > Trust Center > Trust Center Settings
 3. Select "Macro Settings"
 4. Check "Trust access to the VBA project object model"
-
-> [!NOTE]
-> In MS Access, Trust Access to VBA project object model is always enabled if database is stored in trusted location.
 
 ### Basic Usage
 
@@ -69,16 +52,6 @@ word-vba edit --vba-directory ./VBA
 word-vba import --vba-directory ./VBA
 ```
 
-#### Access Example
-
-```bash
-# Export VBA modules
-access-vba export --vba-directory ./VBA
-
-# Import changes
-access-vba import --vba-directory ./VBA
-```
-
 ## Detailed Features
 
 ### Supported File Types
@@ -94,8 +67,6 @@ The package provides separate command-line tools for each Office application:
 
 - `word-vba`
 - `excel-vba`
-- `access-vba`
-- `powerpoint-vba`
 
 Each tool supports three main commands (plus `check {all}` for troubleshooting):
 
@@ -147,19 +118,6 @@ excel-vba edit -x  # Use xlwings wrapper
 
 see ./docs/development/DEVELOPMENT.md
 
-## Links
-
-- [Homepage](https://langui.ch/current-projects/vba-edit/)
-- [Documentation](https://github.com/markuskiller/vba-edit/blob/main/README.md)
-- [Source Code](https://github.com/markuskiller/vba-edit)
-- [Changelog](https://github.com/markuskiller/vba-edit/blob/main/CHANGELOG.md)
-- [Changelog of latest dev version](https://github.com/markuskiller/vba-edit/blob/dev/CHANGELOG.md)
-- [Video Tutorial](https://www.youtube.com/watch?v=xoO-Fx0fTpM) (xlwings walkthrough, with similar functionality)
-
 ## License
 
 BSD 3-Clause License
-
-## Acknowledgments
-
-This project is heavily inspired by code from `xlwings vba edit`, maintained by the [xlwings-Project](https://www.xlwings.org/) under the BSD 3-Clause License.

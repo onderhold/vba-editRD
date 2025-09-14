@@ -21,6 +21,7 @@ from vba_edit.path_utils import get_document_paths
 from vba_edit.utils import setup_logging, get_windows_ansi_codepage, get_active_office_document
 from vba_edit.cli_common import (
     add_common_arguments,
+    process_config_file,
     add_encoding_arguments,
     add_header_arguments,
     add_excel_specific_arguments,
@@ -268,7 +269,9 @@ def main() -> None:
     try:
         parser = create_cli_parser()
         args = parser.parse_args()
-
+        # Merge config file values if --conf is provided
+        args = process_config_file(args)
+        
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 

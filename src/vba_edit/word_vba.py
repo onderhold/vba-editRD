@@ -59,10 +59,10 @@ Examples:
     word-vba edit --save-headers
 
 IMPORTANT: 
-           [!] It's early days. Use with care and backup your imortant macro-enabled
+           [!] It's early days. Use with care and backup your important macro-enabled
                MS Office documents before using them with this tool!
 
-               First tests have been very promissing. Feedback appreciated via
+               First tests have been very promising. Feedback appreciated via
                github issues. 
 
            [!] This tool requires "Trust access to the VBA project object model" 

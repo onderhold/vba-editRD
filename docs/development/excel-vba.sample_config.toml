@@ -3,12 +3,21 @@
 # Place this file in your working directory or specify its path with --conf
 
 [general]
-# Path to the Office document to work with
+# Path and filname of the Office document to work with.
+# The path can be relative to this TOML config file, which means it can also be left out,
+# so that 'file' will get searched for in the directory of this config file
 file = "C:/Users/YourName/Documents/example.xlsx"
 
-# Directory to export/import VBA modules
-# either absolute path or relative to parent path of "file" setting
+# Target directory for exporting/importing VBA modules and PowerQuery M code
+# either absolute path or relative to parent path of 'file' setting
+#
+# Some placeholders can be used here:
+# {file.name} will be replaced with the pure filename of the 'file' setting, without path and file extension
+# {file.fullname} will be replaced with the filename of the 'file' setting, including the file extension
+# {file.path} will be replaced with the parent path of the 'file' setting, after it has been resolved
+# {vbaproject} will be replaced with the VBA project name found within the office file
 vba_directory = "/vba-modules"
+pq_directory = "/pq-M"
 
 # Encoding for reading/writing VBA files (e.g., "utf-8", "windows-1252")
 # valid codecs: see https://docs.python.org/3/library/codecs.html#standard-encodings
