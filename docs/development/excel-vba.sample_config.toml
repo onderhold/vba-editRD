@@ -12,10 +12,10 @@ file = "C:/Users/YourName/Documents/example.xlsx"
 # either absolute path or relative to parent path of 'file' setting
 #
 # Some placeholders can be used here:
-# {file.name} will be replaced with the pure filename of the 'file' setting, without path and file extension
-# {file.fullname} will be replaced with the filename of the 'file' setting, including the file extension
-# {file.path} will be replaced with the parent path of the 'file' setting, after it has been resolved
-# {vbaproject} will be replaced with the VBA project name found within the office file
+# {general.file.name} will be replaced with the pure filename of the 'file' setting, without path and file extension
+# {general.file.fullname} will be replaced with the filename of the 'file' setting, including the file extension
+# {general.file.path} will be replaced with the parent path of the 'file' setting, after it has been resolved
+# {general.file.vbaproject} will be replaced with the VBA project name found within the office file
 vba_directory = "/vba-modules"
 pq_directory = "/pq-M"
 
