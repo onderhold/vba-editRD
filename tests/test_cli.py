@@ -31,18 +31,6 @@ from tests.cli.test_config import *      # Configuration file tests
 from tests.cli.test_integration import * # Integration tests with real Office documents
 from tests.cli.test_debugging import *   # Debugging tests that write option values to files
 
-# Import the common fixtures and helpers to ensure they're available
-from tests.cli.helpers import (
-    temp_office_doc,
-    CLITester, 
-    ReferenceDocuments,
-    get_installed_apps,
-    pytest_generate_tests
-)
-
-# Note: pytest_generate_tests is imported above and will be used automatically
-# by pytest for parameterization of vba_app across all imported test modules
-
 
 if __name__ == "__main__":
     pytest.main(["-v", __file__])
