@@ -17,13 +17,6 @@ from vba_edit.exceptions import (
 from vba_edit.office_vba import PowerPointVBAHandler
 from vba_edit.path_utils import get_document_paths
 from vba_edit.utils import get_active_office_document, get_windows_ansi_codepage, setup_logging
-from vba_edit.cli_common import (
-    add_common_arguments,
-    process_config_file,
-    add_encoding_arguments,
-    add_header_arguments,
-    add_excel_specific_arguments,
-)
 
 
 # Configure module logger

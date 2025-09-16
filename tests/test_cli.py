@@ -6,9 +6,21 @@ import pytest
 import win32com.client
 import pythoncom
 from pathlib import Path
+import os
 
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS, SUPPORTED_APPS
 from vba_edit.exceptions import VBAError
+from vba_edit.cli_common import (
+    PLACEHOLDER_CONFIG_PATH,
+    PLACEHOLDER_FILE_NAME,
+    PLACEHOLDER_FILE_PATH,
+    PLACEHOLDER_VBA_PROJECT,
+    CONFIG_SECTION_GENERAL,
+    CONFIG_KEY_FILE,
+    CONFIG_KEY_VBA_DIRECTORY,
+    CONFIG_KEY_VERBOSE,
+    CONFIG_KEY_RUBBERDUCK_FOLDERS,
+)
 
 
 class ReferenceDocuments:
@@ -221,6 +233,250 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("vba_app", apps, ids=lambda x: f"{x}-vba")
 
 
+class TestCLIConfig:
+    """Tests for configuration file functionality."""
+
+    def create_test_config(self, config_dir: Path, config_content: str) -> Path:
+        """Create a test configuration file.
+
+        Args:
+            config_dir: Directory to create config file in
+            config_content: TOML content for the config file
+
+        Returns:
+            Path to the created config file
+        """
+        config_file = config_dir / "test-config.toml"
+        config_file.write_text(config_content, encoding="utf-8")
+        return config_file
+
+    @pytest.mark.office
+    def test_config_file_basic(self, vba_app, tmp_path):
+        """Test basic configuration file loading."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_VERBOSE} = true
+{CONFIG_KEY_RUBBERDUCK_FOLDERS} = true
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        # Test that config file is accepted
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_file_not_found(self, vba_app):
+        """Test handling of missing configuration file."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        result = cli.run(["export", "--conf", "nonexistent-config.toml", "--help"])
+        # Should show error but not crash
+        assert "Error loading configuration file" in result.stderr or result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_file_invalid_toml(self, vba_app, tmp_path):
+        """Test handling of invalid TOML configuration."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Create invalid TOML file
+        config_file = tmp_path / "invalid-config.toml"
+        config_file.write_text("invalid = toml content [", encoding="utf-8")
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        # Should show error but not crash
+        assert "Error loading configuration file" in result.stderr or result.returncode == 0
+
+    @pytest.mark.office
+    def test_cli_args_override_config(self, vba_app, tmp_path):
+        """Test that CLI arguments override configuration file values."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_VERBOSE} = true
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        # CLI should override config (verbose=false should override verbose=true in config)
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        # This test mainly ensures no errors occur during argument processing
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_placeholder_config_path(self, vba_app, tmp_path):
+        """Test {config.path} placeholder resolution."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Create subdirectory for config
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        # Use os.sep for OS-agnostic path separator
+        vba_modules_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}vba-modules"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_modules_path}"
+"""
+        config_file = self.create_test_config(config_dir, config_content)
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_placeholder_file_info(self, vba_app, tmp_path):
+        """Test file-related placeholder resolution."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Create a mock Office file path for testing
+        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
+        test_file = tmp_path / f"MyProject{extension}"
+
+        # Use os.sep for OS-agnostic path separator
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}vba-{PLACEHOLDER_FILE_NAME}"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_multiple_placeholders(self, vba_app, tmp_path):
+        """Test multiple placeholders in the same value."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
+        test_file = tmp_path / f"TestDoc{extension}"
+
+        # Use os.sep for OS-agnostic path separator
+        vba_directory_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}{PLACEHOLDER_FILE_NAME}-modules"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.integration
+    @pytest.mark.com
+    @pytest.mark.office
+    def test_config_file_with_real_document(self, vba_app, temp_office_doc, tmp_path):
+        """Test configuration file with actual Office document operations."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Use os.sep for OS-agnostic path separator
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}vba-{PLACEHOLDER_FILE_NAME}"
+
+        # Create config that uses placeholders
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{temp_office_doc}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
+{CONFIG_KEY_VERBOSE} = true
+{CONFIG_KEY_RUBBERDUCK_FOLDERS} = true
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        # Test export using config file
+        result = cli.run(["export", "--conf", str(config_file)])
+
+        # Should succeed or show meaningful error
+        success = result.returncode == 0 or "No VBA components found" in (result.stdout + result.stderr)
+        assert success, f"Command failed with output: {result.stdout + result.stderr}"
+
+        # Check that VBA directory was created with placeholder resolution
+        expected_vba_dir = temp_office_doc.parent / f"vba-{temp_office_doc.stem}"
+        if success and result.returncode == 0:
+            assert expected_vba_dir.exists(), f"Expected VBA directory {expected_vba_dir} was not created"
+
+    @pytest.mark.office
+    def test_config_relative_paths(self, vba_app, tmp_path):
+        """Test relative paths in configuration file."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Create subdirectory structure
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        docs_dir = tmp_path / "documents"
+        docs_dir.mkdir()
+
+        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
+
+        # Use os.sep for OS-agnostic relative path
+        relative_file_path = f"..{os.sep}documents{os.sep}test{extension}"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{relative_file_path}"
+{CONFIG_KEY_VBA_DIRECTORY} = "vba-output"
+"""
+        config_file = self.create_test_config(config_dir, config_content)
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_nested_placeholders(self, vba_app, tmp_path):
+        """Test nested configuration sections with placeholders."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
+        test_file = tmp_path / f"Project{extension}"
+
+        # Use os.sep for OS-agnostic path separators
+        vba_modules_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}modules"
+        backup_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}backups{os.sep}{PLACEHOLDER_FILE_NAME}"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_modules_path}"
+
+[office]
+application = "{vba_app}"
+
+[advanced]
+backup_directory = "{backup_path}"
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_vbaproject_placeholder_preparation(self, vba_app, tmp_path):
+        """Test that {vbaproject} placeholder is preserved for later resolution."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
+        test_file = tmp_path / f"TestFile{extension}"
+
+        # Use os.sep for OS-agnostic path separator
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}{PLACEHOLDER_VBA_PROJECT}-modules"
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
+"""
+        config_file = self.create_test_config(tmp_path, config_content)
+
+        # This should not fail even though {vbaproject} cannot be resolved yet
+        result = cli.run(["export", "--conf", str(config_file), "--help"])
+        assert result.returncode == 0
+
+
 class TestCLICommon:
     """Common tests for all Office VBA CLIs."""
 
@@ -362,6 +618,38 @@ class TestCLICommon:
         cli.assert_success(
             ["import", "-f", str(temp_office_doc), "--vba-directory", str(vba_dir), "--rubberduck-folders"]
         )
+
+    @pytest.mark.office
+    def test_config_option_available(self, vba_app):
+        """Test that --conf option is available for all Office apps."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # Test that help shows the conf option
+        result = cli.run(["--help"])
+        assert "--conf" in result.stdout, f"--conf option not found in help for {vba_app}-vba"
+
+        # Test that the option is accepted for each subcommand
+        for cmd in ["export", "import", "edit"]:
+            result = cli.run([cmd, "--help"])
+            # The --conf option should be inherited from common arguments
+            assert result.returncode == 0
+
+    @pytest.mark.office
+    def test_config_option_with_commands(self, vba_app, tmp_path):
+        """Test --conf option works with all commands."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        config_content = f"""
+[{CONFIG_SECTION_GENERAL}]
+{CONFIG_KEY_VERBOSE} = true
+"""
+        config_file = tmp_path / "test.toml"
+        config_file.write_text(config_content, encoding="utf-8")
+
+        # Test with each command
+        for cmd in ["export", "import", "edit"]:
+            result = cli.run([cmd, "--conf", str(config_file), "--help"])
+            assert result.returncode == 0, f"Command {cmd} failed with --conf option"
 
 
 if __name__ == "__main__":

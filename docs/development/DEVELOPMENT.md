@@ -77,6 +77,33 @@ ruff check src tests
 # Fix linting issues automatically
 ruff check --fix src tests
 ```
+#### When to Run Code Formatting and Linting
+1. Before Each Commit (Recommended)
+This ensures your commits always contain properly formatted, clean code.
+
+2. During Development (As Needed)
+    - When you notice formatting inconsistencies
+    - After making significant code changes
+    - When working on a new feature or bug fix
+
+3. Before Creating Pull Requests
+Always run both tools to ensure code quality standards before submitting for review.
+
+4. After Switching Branches
+When switching between feature branches, especially if multiple developers are working on the project.
+
+#### IDE Integration (Recommended)
+For VS Code, you can configure automatic formatting on save by adding to your settings:
+```json
+{
+    "python.formatting.provider": "black",
+    "editor.formatOnSave": true,
+    "python.linting.ruffEnabled": true
+}
+```
+
+This way, your code is automatically formatted and linted as you work, reducing the need for manual intervention.
+
 
 ### Testing CLI Commands
 ```shell

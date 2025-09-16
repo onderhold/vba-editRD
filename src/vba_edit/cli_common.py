@@ -16,153 +16,154 @@ except ImportError:
 
 
 # Placeholder constants
-PLACEHOLDER_CONFIG_PATH = '{config.path}'
-PLACEHOLDER_FILE_NAME = '{general.file.name}'
-PLACEHOLDER_FILE_FULLNAME = '{general.file.fullname}'
-PLACEHOLDER_FILE_PATH = '{general.file.path}'
-PLACEHOLDER_VBA_PROJECT = '{vbaproject}'
+PLACEHOLDER_CONFIG_PATH = "{config.path}"
+PLACEHOLDER_FILE_NAME = "{general.file.name}"
+PLACEHOLDER_FILE_FULLNAME = "{general.file.fullname}"
+PLACEHOLDER_FILE_PATH = "{general.file.path}"
+PLACEHOLDER_VBA_PROJECT = "{vbaproject}"
 
 # TOML configuration section constants
-CONFIG_SECTION_GENERAL = 'general'
-CONFIG_SECTION_OFFICE = 'office'
-CONFIG_SECTION_EXCEL = 'excel'
-CONFIG_SECTION_WORD = 'word'
-CONFIG_SECTION_ACCESS = 'access'
-CONFIG_SECTION_POWERPOINT = 'powerpoint'
-CONFIG_SECTION_ADVANCED = 'advanced'
+CONFIG_SECTION_GENERAL = "general"
+CONFIG_SECTION_OFFICE = "office"
+CONFIG_SECTION_EXCEL = "excel"
+CONFIG_SECTION_WORD = "word"
+CONFIG_SECTION_ACCESS = "access"
+CONFIG_SECTION_POWERPOINT = "powerpoint"
+CONFIG_SECTION_ADVANCED = "advanced"
 
 # TOML configuration key constants (for general section)
-CONFIG_KEY_FILE = 'file'
-CONFIG_KEY_VBA_DIRECTORY = 'vba_directory'
-CONFIG_KEY_PQ_DIRECTORY = 'pq_directory'
-CONFIG_KEY_ENCODING = 'encoding'
-CONFIG_KEY_DETECT_ENCODING = 'detect_encoding'
-CONFIG_KEY_SAVE_HEADERS = 'save_headers'
-CONFIG_KEY_VERBOSE = 'verbose'
-CONFIG_KEY_LOGFILE = 'logfile'
-CONFIG_KEY_RUBBERDUCK_FOLDERS = 'rubberduck_folders'
-CONFIG_KEY_INVISIBLE_MODE = 'invisible_mode'
-CONFIG_KEY_MODE = 'mode'
+CONFIG_KEY_FILE = "file"
+CONFIG_KEY_VBA_DIRECTORY = "vba_directory"
+CONFIG_KEY_PQ_DIRECTORY = "pq_directory"
+CONFIG_KEY_ENCODING = "encoding"
+CONFIG_KEY_DETECT_ENCODING = "detect_encoding"
+CONFIG_KEY_SAVE_HEADERS = "save_headers"
+CONFIG_KEY_VERBOSE = "verbose"
+CONFIG_KEY_LOGFILE = "logfile"
+CONFIG_KEY_RUBBERDUCK_FOLDERS = "rubberduck_folders"
+CONFIG_KEY_INVISIBLE_MODE = "invisible_mode"
+CONFIG_KEY_MODE = "mode"
+
 
 def resolve_placeholders_in_value(value: str, placeholders: Dict[str, str]) -> str:
     """Resolve placeholders in a single string value.
-    
+
     Args:
         value: String that may contain placeholders
         placeholders: Dictionary mapping placeholder names to values
-        
+
     Returns:
         String with placeholders resolved
     """
     if not isinstance(value, str):
         return value
-        
+
     resolved_value = value
     for placeholder, replacement in placeholders.items():
         if replacement:  # Only replace if we have a value
             resolved_value = resolved_value.replace(placeholder, replacement)
-    
+
     return resolved_value
 
 
 def get_placeholder_values(config_file_path: Optional[str] = None, file_path: Optional[str] = None) -> Dict[str, str]:
     """Get placeholder values based on config file and file paths.
-    
+
     Args:
         config_file_path: Path to the TOML config file (optional)
         file_path: Path to the Office document (optional)
-        
+
     Returns:
         Dictionary mapping placeholder names to their values
     """
     placeholders = {
-        PLACEHOLDER_CONFIG_PATH: '',
-        PLACEHOLDER_FILE_NAME: '',
-        PLACEHOLDER_FILE_FULLNAME: '',
-        PLACEHOLDER_FILE_PATH: '',
+        PLACEHOLDER_CONFIG_PATH: "",
+        PLACEHOLDER_FILE_NAME: "",
+        PLACEHOLDER_FILE_FULLNAME: "",
+        PLACEHOLDER_FILE_PATH: "",
         # {vbaproject} will be resolved later when we have access to the Office file
     }
-    
+
     # Get config file directory for relative path resolution
     if config_file_path:
         config_dir = Path(config_file_path).parent
         placeholders[PLACEHOLDER_CONFIG_PATH] = str(config_dir)
-    
+
     # Extract file information if file path is available
     if file_path:
         # Handle case where file_path might contain unresolved placeholders
-        if '{' not in file_path:  # Only process if no placeholders remain
+        if "{" not in file_path:  # Only process if no placeholders remain
             resolved_file_path = Path(file_path)
-            
+
             # If relative path and we have config directory, resolve relative to config
             if not resolved_file_path.is_absolute() and config_file_path:
                 config_dir = Path(config_file_path).parent
                 resolved_file_path = config_dir / file_path
-                
+
             placeholders[PLACEHOLDER_FILE_NAME] = resolved_file_path.stem  # filename without extension
             placeholders[PLACEHOLDER_FILE_FULLNAME] = resolved_file_path.name  # filename with extension
             placeholders[PLACEHOLDER_FILE_PATH] = str(resolved_file_path.parent)
-    
+
     return placeholders
 
 
 def resolve_all_placeholders(args: argparse.Namespace, config_file_path: Optional[str] = None) -> argparse.Namespace:
     """Resolve all placeholders in arguments after config and CLI have been merged.
-    
+
     Args:
         args: Command-line arguments namespace with merged config values
         config_file_path: Path to config file if one was used
-        
+
     Returns:
         Updated arguments with placeholders resolved
     """
     args_dict = vars(args).copy()
-    
+
     # Get file path from args for placeholder resolution
-    file_path = args_dict.get('file')
-    
+    file_path = args_dict.get("file")
+
     # Get placeholder values
     placeholders = get_placeholder_values(config_file_path, file_path)
-    
+
     # Resolve placeholders in all string arguments
     for key, value in args_dict.items():
         if isinstance(value, str):
             args_dict[key] = resolve_placeholders_in_value(value, placeholders)
-    
+
     # Store config file path for later VBA project placeholder resolution
     if config_file_path:
-        args_dict['_config_file_path'] = config_file_path
-    
+        args_dict["_config_file_path"] = config_file_path
+
     return argparse.Namespace(**args_dict)
 
 
 def resolve_vbaproject_placeholder_in_args(args: argparse.Namespace, vba_project_name: str) -> argparse.Namespace:
     """Resolve the {vbaproject} placeholder in arguments after VBA project name is known.
-    
+
     Args:
         args: Command-line arguments
         vba_project_name: Name of the VBA project
-        
+
     Returns:
         Arguments with {vbaproject} placeholder resolved
     """
     args_dict = vars(args).copy()
-    
+
     # Resolve {vbaproject} placeholder in all string arguments
     for key, value in args_dict.items():
         if isinstance(value, str):
             args_dict[key] = value.replace(PLACEHOLDER_VBA_PROJECT, vba_project_name)
-    
+
     return argparse.Namespace(**args_dict)
 
 
 def resolve_config_placeholders_recursive(value, placeholders: Dict[str, str]):
     """Recursively resolve placeholders in nested configuration structures.
-    
+
     Args:
         value: Value to process (can be dict, list, or string)
         placeholders: Dictionary mapping placeholder names to values
-        
+
     Returns:
         Value with placeholders resolved
     """
@@ -178,73 +179,73 @@ def resolve_config_placeholders_recursive(value, placeholders: Dict[str, str]):
 
 def resolve_vbaproject_placeholder(config: Dict[str, Any], vba_project_name: str) -> Dict[str, Any]:
     """Resolve the {vbaproject} placeholder after VBA project name is known.
-    
+
     Args:
         config: Configuration dictionary
         vba_project_name: Name of the VBA project
-        
+
     Returns:
         Configuration with {vbaproject} placeholder resolved
     """
     import copy
+
     resolved_config = copy.deepcopy(config)
-    
+
     placeholders = {PLACEHOLDER_VBA_PROJECT: vba_project_name}
-    
+
     return resolve_config_placeholders_recursive(resolved_config, placeholders)
 
 
 def load_config_file(config_path: str) -> Dict[str, Any]:
     """Load configuration from a TOML file.
-    
+
     Args:
         config_path: Path to the TOML configuration file
-        
+
     Returns:
         Dictionary containing the configuration
-        
+
     Raises:
         FileNotFoundError: If the configuration file doesn't exist
         ValueError: If the configuration file isn't valid TOML
     """
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
+
     with open(config_path, "rb") as f:
         return toml_lib.load(f)
-    
 
 
 def merge_config_with_args(args: argparse.Namespace, config: Dict[str, Any]) -> argparse.Namespace:
     """Merge configuration from a file with command-line arguments.
-    
+
     Command-line arguments take precedence over configuration file values.
     Configuration structure is preserved (e.g., general.file remains as nested structure).
 
     Args:
         args: Command-line arguments
         config: Configuration from file
-        
+
     Returns:
         Updated arguments with values from configuration
     """
     # Create a copy of the args namespace as a dictionary
     args_dict = vars(args).copy()
-    
+
     # Handle 'general' section - these map directly to CLI args
     if CONFIG_SECTION_GENERAL in config:
         general_config = config[CONFIG_SECTION_GENERAL]
         for key, value in general_config.items():
             # Convert dashes to underscores for argument names
             arg_key = key.replace("-", "_")
-            
+
             # Only update if the arg wasn't explicitly set (is None or is the default)
             if arg_key in args_dict and args_dict[arg_key] is None:
                 args_dict[arg_key] = value
-    
+
     # Store the full config for later access by handlers if needed
-    args_dict['_config'] = config
-    
+    args_dict["_config"] = config
+
     # Convert back to a Namespace
     return argparse.Namespace(**args_dict)
 
@@ -252,29 +253,29 @@ def merge_config_with_args(args: argparse.Namespace, config: Dict[str, Any]) -> 
 def process_config_file(args: argparse.Namespace) -> argparse.Namespace:
     """Load configuration file if specified and merge with command-line arguments.
     Also resolves placeholders in both config and CLI arguments.
-    
+
     Args:
         args: Command-line arguments
-        
+
     Returns:
         Updated arguments with values from configuration file and placeholders resolved
     """
     config_file_path = None
-    
+
     # Process config file if specified
-    if hasattr(args, 'conf') and args.conf:
+    if hasattr(args, "conf") and args.conf:
         config_file_path = args.conf
-        
+
         try:
             config = load_config_file(config_file_path)
             args = merge_config_with_args(args, config)
         except Exception as e:
             print(f"Error loading configuration file: {e}")
             return args
-    
+
     # Resolve all placeholders once after merging (except {vbaproject})
     args = resolve_all_placeholders(args, config_file_path)
-    
+
     return args
 
 
@@ -284,9 +285,16 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     Args:
         parser: The argument parser to add arguments to
     """
-    parser.add_argument("--file", "-f", help="Path to Office document (optional, defaults to active document)")
     parser.add_argument(
-        "--vba-directory", help="Directory to export VBA files to (optional, defaults to current directory)"
+        "--file",
+        "-f",
+        help="Path to Office document (optional, defaults to active document). "
+        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+    )
+    parser.add_argument(
+        "--vba-directory",
+        help="Directory to export VBA files to (optional, defaults to current directory) "
+        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
     parser.add_argument(
@@ -294,7 +302,8 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "-l",
         nargs="?",
         const="vba_edit.log",
-        help="Enable logging to file. Optional path can be specified (default: vba_edit.log)",
+        help="Enable logging to file. Optional path can be specified (default: vba_edit.log)"
+        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
     parser.add_argument(
         "--rubberduck-folders",
@@ -303,8 +312,11 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--conf",
-        help="Path to configuration file (TOML format) with default arguments",
+        help="Path to configuration file (TOML format) with default arguments. "
+        "Command-line arguments override config file values. "
+        "Configuration values support placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
+
 
 def add_excel_specific_arguments(parser: argparse.ArgumentParser) -> None:
     """Add Excel-specific arguments to a parser.

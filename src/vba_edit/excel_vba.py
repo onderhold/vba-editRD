@@ -271,7 +271,7 @@ def main() -> None:
         args = parser.parse_args()
         # Merge config file values if --conf is provided
         args = process_config_file(args)
-        
+
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 
