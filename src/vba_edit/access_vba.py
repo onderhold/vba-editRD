@@ -344,6 +344,9 @@ def main() -> None:
         parser = create_cli_parser()
         args = parser.parse_args()
 
+        # Process configuration file BEFORE setting up logging
+        args = process_config_file(args)
+
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 

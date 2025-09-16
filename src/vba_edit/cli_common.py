@@ -279,12 +279,29 @@ def process_config_file(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def add_config_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add configuration file arguments to a parser.
+
+    Args:
+        parser: The argument parser to add arguments to
+    """
+    parser.add_argument(
+        "--conf",
+        "--config",
+        metavar="CONFIG_FILE",
+        help="Path to configuration file (TOML format) with argument values. "
+        "Command-line arguments override config file values. "
+        "Configuration values and command-line arguments support placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+    )
+
+
 def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     """Add common arguments to a parser.
 
     Args:
         parser: The argument parser to add arguments to
     """
+    add_config_arguments(parser)
     parser.add_argument(
         "--file",
         "-f",
@@ -309,12 +326,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--rubberduck-folders",
         action="store_true",
         help="If a module contains a RubberduckVBA '@Folder annotation, organize folders in the file system accordingly",
-    )
-    parser.add_argument(
-        "--conf",
-        help="Path to configuration file (TOML format) with default arguments. "
-        "Command-line arguments override config file values. "
-        "Configuration values support placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
 
 

@@ -4,6 +4,14 @@ import pytest
 from .helpers import get_installed_apps
 
 
+@pytest.fixture
+def vba_app():
+    """VBA application fixture - will be parametrized by pytest_generate_tests."""
+    # This fixture body will never execute because pytest_generate_tests
+    # will parametrize it with actual values
+    pass
+
+
 def pytest_generate_tests(metafunc):
     """Dynamically parametrize vba_app based on command line options."""
     if "vba_app" in metafunc.fixturenames:

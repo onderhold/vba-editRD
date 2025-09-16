@@ -269,7 +269,8 @@ def main() -> None:
     try:
         parser = create_cli_parser()
         args = parser.parse_args()
-        # Merge config file values if --conf is provided
+
+        # Process configuration file BEFORE setting up logging
         args = process_config_file(args)
 
         # Set up logging first
