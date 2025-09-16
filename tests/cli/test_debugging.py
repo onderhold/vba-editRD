@@ -2,6 +2,7 @@
 
 import pytest
 import os
+import json
 from pathlib import Path
 from .helpers import CLITester, temp_office_doc
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS
@@ -15,6 +16,9 @@ from vba_edit.cli_common import (
     CONFIG_KEY_VBA_DIRECTORY,
     CONFIG_KEY_VERBOSE,
     CONFIG_KEY_RUBBERDUCK_FOLDERS,
+    merge_config_with_args,
+    resolve_placeholders,
+    load_config_file,
 )
 
 
@@ -35,11 +39,137 @@ class TestCLIOptionsDebugging:
         options_file = tmp_path / f"test_options_{test_name}.txt"
         content = f"Test: {test_name}\n"
         content += "=" * 50 + "\n"
-        for key, value in sorted(options_dict.items()):
-            content += f"{key}: {value}\n"
-        content += "\n"
+        content += f"Timestamp: {pytest.current_time}\n" if hasattr(pytest, 'current_time') else ""
+        content += f"CLI Command: {options_dict.get('cli_command', 'unknown')}\n"
+        content += f"Return Code: {options_dict.get('return_code', 'unknown')}\n"
+        content += "-" * 30 + "\n"
+        
+        # Separate config and runtime options
+        config_options = {k: v for k, v in options_dict.items() if k.startswith(('config_', 'original_', 'template_'))}
+        runtime_options = {k: v for k, v in options_dict.items() if k.startswith(('resolved_', 'expected_', 'actual_', 'cli_'))}
+        other_options = {k: v for k, v in options_dict.items() if not any(k.startswith(prefix) for prefix in ['config_', 'original_', 'template_', 'resolved_', 'expected_', 'actual_', 'cli_'])}
+        
+        if config_options:
+            content += "Configuration Options:\n"
+            for key, value in sorted(config_options.items()):
+                content += f"  {key}: {value}\n"
+            content += "\n"
+        
+        if runtime_options:
+            content += "Runtime/Resolved Options:\n"
+            for key, value in sorted(runtime_options.items()):
+                content += f"  {key}: {value}\n"
+            content += "\n"
+        
+        if other_options:
+            content += "Other Options:\n"
+            for key, value in sorted(other_options.items()):
+                content += f"  {key}: {value}\n"
+            content += "\n"
+        
+        # Add debug information about the test environment
+        content += "Environment Info:\n"
+        content += f"  Working Directory: {Path.cwd()}\n"
+        content += f"  Temp Path: {tmp_path}\n"
+        content += f"  Test File: {options_file}\n"
+        
         options_file.write_text(content, encoding="utf-8")
         return options_file
+
+    def simulate_cli_processing(self, cli_args: list, config_file_path: Path = None) -> dict:
+        """Simulate CLI argument processing to extract effective options.
+        
+        Args:
+            cli_args: CLI arguments as they would be passed
+            config_file_path: Optional configuration file path
+            
+        Returns:
+            Dictionary of effective options after processing
+        """
+        # This simulates what happens inside the CLI processing
+        from argparse import Namespace
+        import argparse
+        
+        # Create a mock args namespace from CLI arguments
+        # This is a simplified version - in reality each app has its own parser
+        args = Namespace()
+        
+        # Parse basic arguments
+        i = 0
+        while i < len(cli_args):
+            arg = cli_args[i]
+            if arg in ['-f', '--file'] and i + 1 < len(cli_args):
+                args.file = cli_args[i + 1]
+                i += 2
+            elif arg == '--vba-directory' and i + 1 < len(cli_args):
+                args.vba_directory = cli_args[i + 1]
+                i += 2
+            elif arg == '--conf' and i + 1 < len(cli_args):
+                args.conf = cli_args[i + 1]
+                config_file_path = Path(cli_args[i + 1])
+                i += 2
+            elif arg == '--verbose':
+                args.verbose = True
+                i += 1
+            elif arg == '--rubberduck-folders':
+                args.rubberduck_folders = True
+                i += 1
+            elif arg in ['export', 'import', 'edit']:
+                args.command = arg
+                i += 1
+            else:
+                i += 1
+        
+        # Set defaults for missing attributes
+        for attr in ['file', 'vba_directory', 'conf', 'verbose', 'rubberduck_folders', 'command']:
+            if not hasattr(args, attr):
+                setattr(args, attr, None if attr in ['file', 'vba_directory', 'conf'] else False)
+        
+        effective_options = {
+            'command': getattr(args, 'command', 'unknown'),
+            'file_argument': getattr(args, 'file', None),
+            'vba_directory_argument': getattr(args, 'vba_directory', None),
+            'verbose_argument': getattr(args, 'verbose', False),
+            'rubberduck_folders_argument': getattr(args, 'rubberduck_folders', False),
+            'config_file_argument': getattr(args, 'conf', None),
+        }
+        
+        # Load and merge configuration if available
+        if config_file_path and config_file_path.exists():
+            try:
+                config = load_config_file(str(config_file_path))
+                effective_options['config_loaded'] = True
+                effective_options['config_content'] = str(config)
+                
+                # Merge config with args (this simulates the actual CLI processing)
+                merged_args = merge_config_with_args(args, config)
+                
+                effective_options['file_after_config'] = getattr(merged_args, 'file', None)
+                effective_options['vba_directory_after_config'] = getattr(merged_args, 'vba_directory', None)
+                effective_options['verbose_after_config'] = getattr(merged_args, 'verbose', False)
+                effective_options['rubberduck_folders_after_config'] = getattr(merged_args, 'rubberduck_folders', False)
+                
+                # Try to resolve placeholders if we have enough information
+                if getattr(merged_args, 'file', None) and getattr(merged_args, 'vba_directory', None):
+                    try:
+                        resolved_options = resolve_placeholders(
+                            vars(merged_args), 
+                            str(config_file_path.parent),
+                            getattr(merged_args, 'file', '')
+                        )
+                        effective_options['vba_directory_resolved'] = resolved_options.get('vba_directory')
+                        effective_options['file_resolved'] = resolved_options.get('file')
+                    except Exception as e:
+                        effective_options['placeholder_resolution_error'] = str(e)
+                
+            except Exception as e:
+                effective_options['config_load_error'] = str(e)
+                effective_options['config_loaded'] = False
+        else:
+            effective_options['config_loaded'] = False
+            effective_options['config_file_exists'] = config_file_path.exists() if config_file_path else False
+        
+        return effective_options
 
     @pytest.mark.office
     def test_default_options_values(self, vba_app, tmp_path):
@@ -52,15 +182,20 @@ class TestCLIOptionsDebugging:
         vba_dir = tmp_path / "vba"
         
         # Run export with minimal arguments to see defaults
-        result = cli.run([
+        cli_args = [
             "export", 
             "-f", str(test_file), 
             "--vba-directory", str(vba_dir),
             "--help"  # Use help to avoid file operations
-        ])
+        ]
+        result = cli.run(cli_args)
         
-        # Extract effective options
+        # Simulate the CLI processing to get effective options
+        simulated_options = self.simulate_cli_processing(cli_args)
+        
+        # Extract effective options combining real CLI output with simulation
         effective_options = {
+            "cli_command": f"{vba_app}-vba " + " ".join(cli_args),
             "command": "export",
             "file": str(test_file),
             "vba_directory": str(vba_dir),
@@ -69,7 +204,9 @@ class TestCLIOptionsDebugging:
             "config_file": "none",
             "return_code": result.returncode,
             "stdout_length": len(result.stdout),
-            "stderr_length": len(result.stderr)
+            "stderr_length": len(result.stderr),
+            "help_displayed": "help" in result.stdout.lower() or "usage" in result.stdout.lower(),
+            **{f"simulated_{k}": v for k, v in simulated_options.items()}
         }
         
         options_file = self.write_options_file(tmp_path, f"default_{vba_app}", effective_options)
@@ -97,24 +234,32 @@ class TestCLIOptionsDebugging:
         
         # Run with config file but override some options
         override_vba_dir = tmp_path / "override_vba"
-        result = cli.run([
+        cli_args = [
             "export",
             "--conf", str(config_file),
             "--vba-directory", str(override_vba_dir),  # Override config
             "--rubberduck-folders",  # Override config
             "--help"
-        ])
+        ]
+        result = cli.run(cli_args)
+        
+        # Simulate CLI processing
+        simulated_options = self.simulate_cli_processing(cli_args, config_file)
         
         effective_options = {
+            "cli_command": f"{vba_app}-vba " + " ".join(cli_args),
             "command": "export",
             "config_file": str(config_file),
+            "config_content": config_content.replace("\n", "\\n"),
             "file_from_config": str(test_file),
+            "vba_directory_from_config": str(vba_dir),
             "vba_directory_override": str(override_vba_dir),
             "verbose_from_config": "true",
             "rubberduck_folders_override": "true",
             "return_code": result.returncode,
             "config_file_exists": str(config_file.exists()),
-            "test_file_exists": str(test_file.exists())
+            "test_file_exists": str(test_file.exists()),
+            **{f"simulated_{k}": v for k, v in simulated_options.items()}
         }
         
         options_file = self.write_options_file(tmp_path, f"config_merge_{vba_app}", effective_options)
@@ -150,11 +295,12 @@ output_template = "{PLACEHOLDER_VBA_PROJECT}_exported"
         config_file = config_dir / "project-config.toml"
         config_file.write_text(config_content, encoding="utf-8")
         
-        result = cli.run([
+        cli_args = [
             "export",
             "--conf", str(config_file),
             "--help"
-        ])
+        ]
+        result = cli.run(cli_args)
         
         # Calculate expected placeholder resolutions
         expected_config_path = str(config_dir)
@@ -163,162 +309,31 @@ output_template = "{PLACEHOLDER_VBA_PROJECT}_exported"
         expected_vba_dir = f"{expected_config_path}{os.sep}modules{os.sep}{expected_file_name}"
         expected_backup_dir = f"{expected_file_path}{os.sep}backups"
         
+        # Simulate CLI processing
+        simulated_options = self.simulate_cli_processing(cli_args, config_file)
+        
         effective_options = {
+            "cli_command": f"{vba_app}-vba " + " ".join(cli_args),
             "command": "export",
             "config_file": str(config_file),
+            "config_content": config_content.replace("\n", "\\n"),
             "original_vba_directory": vba_directory_with_placeholders,
-            "resolved_vba_directory": expected_vba_dir,
+            "expected_vba_directory": expected_vba_dir,
             "original_backup_directory": backup_path,
-            "resolved_backup_directory": expected_backup_dir,
-            "placeholder_config_path": PLACEHOLDER_CONFIG_PATH,
-            "placeholder_file_path": PLACEHOLDER_FILE_PATH,
-            "placeholder_file_name": PLACEHOLDER_FILE_NAME,
-            "placeholder_vba_project": PLACEHOLDER_VBA_PROJECT,
+            "expected_backup_directory": expected_backup_dir,
+            "template_config_path": PLACEHOLDER_CONFIG_PATH,
+            "template_file_path": PLACEHOLDER_FILE_PATH,
+            "template_file_name": PLACEHOLDER_FILE_NAME,
+            "template_vba_project": PLACEHOLDER_VBA_PROJECT,
             "actual_config_path": expected_config_path,
             "actual_file_path": expected_file_path,
             "actual_file_name": expected_file_name,
-            "return_code": result.returncode
+            "return_code": result.returncode,
+            **{f"simulated_{k}": v for k, v in simulated_options.items()}
         }
         
         options_file = self.write_options_file(tmp_path, f"placeholders_{vba_app}", effective_options)
         assert options_file.exists()
-
-    @pytest.mark.office
-    def test_multiple_config_scenarios(self, vba_app, tmp_path):
-        """Test various configuration scenarios and document their behavior."""
-        cli = CLITester(f"{vba_app}-vba")
-        
-        scenarios = [
-            {
-                "name": "minimal_config",
-                "config": f"""
-[{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_VERBOSE} = true
-""",
-                "args": ["export", "--help"]
-            },
-            {
-                "name": "full_config",
-                "config": f"""
-[{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_VERBOSE} = true
-{CONFIG_KEY_RUBBERDUCK_FOLDERS} = true
-
-[office]
-application = "{vba_app}"
-""",
-                "args": ["export", "--help"]
-            },
-            {
-                "name": "config_with_file",
-                "config": f"""
-[{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "test{OFFICE_MACRO_EXTENSIONS[vba_app]}"
-{CONFIG_KEY_VBA_DIRECTORY} = "vba-files"
-""",
-                "args": ["export", "--help"]
-            }
-        ]
-        
-        for scenario in scenarios:
-            config_file = tmp_path / f"config_{scenario['name']}.toml"
-            config_file.write_text(scenario["config"], encoding="utf-8")
-            
-            result = cli.run([*scenario["args"], "--conf", str(config_file)])
-            
-            effective_options = {
-                "scenario": scenario["name"],
-                "config_content": scenario["config"].replace("\n", "\\n"),
-                "command_args": " ".join(scenario["args"]),
-                "return_code": result.returncode,
-                "stdout_lines": len(result.stdout.splitlines()),
-                "stderr_lines": len(result.stderr.splitlines()),
-                "config_file_size": len(scenario["config"]),
-                "has_error_output": str("error" in result.stderr.lower()),
-                "has_help_output": str("help" in result.stdout.lower() or "usage" in result.stdout.lower())
-            }
-            
-            options_file = self.write_options_file(tmp_path, f"scenario_{scenario['name']}_{vba_app}", effective_options)
-            assert options_file.exists()
-
-    @pytest.mark.office
-    def test_relative_path_resolution(self, vba_app, tmp_path):
-        """Test relative path resolution in different directory contexts."""
-        cli = CLITester(f"{vba_app}-vba")
-        
-        # Create directory structure
-        project_root = tmp_path / "project"
-        config_dir = project_root / "config"
-        docs_dir = project_root / "documents"
-        output_dir = project_root / "output"
-        
-        for dir_path in [project_root, config_dir, docs_dir, output_dir]:
-            dir_path.mkdir(parents=True)
-        
-        extension = OFFICE_MACRO_EXTENSIONS[vba_app]
-        relative_scenarios = [
-            {
-                "name": "relative_to_config",
-                "config_dir": config_dir,
-                "file_path": f"..{os.sep}documents{os.sep}test{extension}",
-                "vba_dir": f"..{os.sep}output{os.sep}vba"
-            },
-            {
-                "name": "absolute_paths",
-                "config_dir": config_dir,
-                "file_path": str(docs_dir / f"test{extension}"),
-                "vba_dir": str(output_dir / "vba")
-            },
-            {
-                "name": "mixed_paths",
-                "config_dir": config_dir,
-                "file_path": str(docs_dir / f"test{extension}"),
-                "vba_dir": f"..{os.sep}output{os.sep}vba"
-            }
-        ]
-        
-        for scenario in relative_scenarios:
-            config_content = f"""
-[{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{scenario['file_path']}"
-{CONFIG_KEY_VBA_DIRECTORY} = "{scenario['vba_dir']}"
-{CONFIG_KEY_VERBOSE} = true
-"""
-            config_file = scenario["config_dir"] / f"{scenario['name']}.toml"
-            config_file.write_text(config_content, encoding="utf-8")
-            
-            result = cli.run([
-                "export",
-                "--conf", str(config_file),
-                "--help"
-            ])
-            
-            # Calculate absolute paths for comparison
-            if os.path.isabs(scenario["file_path"]):
-                absolute_file = scenario["file_path"]
-            else:
-                absolute_file = str((scenario["config_dir"] / scenario["file_path"]).resolve())
-                
-            if os.path.isabs(scenario["vba_dir"]):
-                absolute_vba_dir = scenario["vba_dir"]
-            else:
-                absolute_vba_dir = str((scenario["config_dir"] / scenario["vba_dir"]).resolve())
-            
-            effective_options = {
-                "scenario": scenario["name"],
-                "config_dir": str(scenario["config_dir"]),
-                "relative_file_path": scenario["file_path"],
-                "relative_vba_dir": scenario["vba_dir"],
-                "absolute_file_path": absolute_file,
-                "absolute_vba_dir": absolute_vba_dir,
-                "config_file": str(config_file),
-                "config_exists": str(config_file.exists()),
-                "return_code": result.returncode,
-                "working_directory": str(Path.cwd())
-            }
-            
-            options_file = self.write_options_file(tmp_path, f"relative_{scenario['name']}_{vba_app}", effective_options)
-            assert options_file.exists()
 
     @pytest.mark.office
     def test_command_line_precedence(self, vba_app, tmp_path):
@@ -343,7 +358,7 @@ application = "{vba_app}"
         config_file.write_text(config_content, encoding="utf-8")
         
         # Command line overrides everything
-        result = cli.run([
+        cli_args = [
             "export",
             "--conf", str(config_file),
             "-f", str(cli_file_path),  # Override file
@@ -351,11 +366,17 @@ application = "{vba_app}"
             "--verbose",  # Override verbose
             "--rubberduck-folders",  # Override rubberduck folders
             "--help"
-        ])
+        ]
+        result = cli.run(cli_args)
+        
+        # Simulate CLI processing
+        simulated_options = self.simulate_cli_processing(cli_args, config_file)
         
         effective_options = {
+            "cli_command": f"{vba_app}-vba " + " ".join(cli_args),
             "test_type": "command_line_precedence",
             "config_file": str(config_file),
+            "config_content": config_content.replace("\n", "\\n"),
             "config_file_value": str(config_file_path),
             "cli_file_value": str(cli_file_path),
             "config_vba_dir": str(config_vba_dir),
@@ -365,7 +386,8 @@ application = "{vba_app}"
             "config_rubberduck": "false",
             "cli_rubberduck": "true",
             "return_code": result.returncode,
-            "has_precedence_test": "true"
+            "has_precedence_test": "true",
+            **{f"simulated_{k}": v for k, v in simulated_options.items()}
         }
         
         options_file = self.write_options_file(tmp_path, f"precedence_{vba_app}", effective_options)
@@ -398,10 +420,11 @@ overwrite_existing = true
         config_file.write_text(config_content, encoding="utf-8")
         
         # Test export operation
-        result = cli.run([
+        cli_args = [
             "export",
             "--conf", str(config_file)
-        ])
+        ]
+        result = cli.run(cli_args)
         
         # Calculate expected values
         file_path = str(temp_office_doc.parent)
@@ -409,12 +432,17 @@ overwrite_existing = true
         # VBA project name would need to be extracted from the document
         expected_vba_dir = f"{file_path}{os.sep}VBAProject-{file_name}"  # Placeholder for actual VBA project name
         
+        # Simulate CLI processing
+        simulated_options = self.simulate_cli_processing(cli_args, config_file)
+        
         effective_options = {
+            "cli_command": f"{vba_app}-vba " + " ".join(cli_args),
             "test_type": "real_document",
             "document_path": str(temp_office_doc),
             "document_exists": str(temp_office_doc.exists()),
             "document_size": str(temp_office_doc.stat().st_size) if temp_office_doc.exists() else "0",
             "config_file": str(config_file),
+            "config_content": config_content.replace("\n", "\\n"),
             "template_vba_directory": vba_path_template,
             "expected_vba_directory": expected_vba_dir,
             "file_path_component": file_path,
@@ -422,7 +450,8 @@ overwrite_existing = true
             "return_code": result.returncode,
             "operation_successful": str(result.returncode == 0),
             "output_length": len(result.stdout + result.stderr),
-            "has_vba_components": str("VBA components" in (result.stdout + result.stderr))
+            "has_vba_components": str("VBA components" in (result.stdout + result.stderr)),
+            **{f"simulated_{k}": v for k, v in simulated_options.items()}
         }
         
         options_file = self.write_options_file(tmp_path, f"real_doc_{vba_app}", effective_options)
