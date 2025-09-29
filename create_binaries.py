@@ -161,7 +161,7 @@ Examples:
         print(f"✗ Failed to build: {', '.join(failed_builds)}")
         sys.exit(1)
 
-    print(f"All requested executables built successfully!")
+    print("All requested executables built successfully!")
 
 
 if __name__ == "__main__":

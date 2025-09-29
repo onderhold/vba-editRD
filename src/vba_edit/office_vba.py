@@ -13,7 +13,7 @@ from typing import Dict, Optional, Any, Tuple
 
 # Third-party imports
 import win32com.client
-from watchgod import Change, RegExpWatcher
+from watchfiles import Change, watch
 
 # Updated local imports
 from vba_edit.path_utils import (
@@ -1120,24 +1120,23 @@ class OfficeVBAHandler(ABC):
             last_check_time = time.time()
             check_interval = 30  # Check connection every 30 seconds
 
-            # Setup file watcher with recursive support if Rubberduck folders are enabled
+            # Setup file patterns for watchfiles
             if self.use_rubberduck_folders:
                 # Watch recursively
-                # TODO: watchgod does not support ignore_paths=None for recursive watching?
-                # TODO: make regex expression a global constant?
-                watcher = RegExpWatcher(
-                    self.vba_dir,
-                    re_files=r"^.*\.(cls|frm|bas)$",
-                    ignore_paths=None,  # Watch all subdirectories
-                )
+                watch_path = self.vba_dir
+                recursive = True
             else:
                 # Watch only the root directory
-                watcher = RegExpWatcher(
-                    self.vba_dir,
-                    re_files=r"^.*\.(cls|frm|bas)$",
-                )
+                watch_path = self.vba_dir
+                recursive = False
 
-            while True:
+            for changes in watch(
+                watch_path,
+                recursive=recursive,
+                ignore_patterns=["*.tmp", "*.temp", "*.bak"],
+                # watchfiles doesn't use regex patterns like watchgod
+                # We'll filter by extension in the loop
+            ):
                 try:
                     # Check connection periodically
                     current_time = time.time()
@@ -1147,10 +1146,15 @@ class OfficeVBAHandler(ABC):
                         last_check_time = current_time
                         logger.debug("Connection check passed")
 
-                    # Check for changes using watchgod
-                    changes = watcher.check()
-                    if changes:
-                        logger.debug(f"Watchgod detected changes: {changes}")
+                    # Filter changes to only include VBA files
+                    vba_changes = [
+                        (change_type, path)
+                        for change_type, path in changes
+                        if Path(path).suffix.lower() in [".cls", ".frm", ".bas"]
+                    ]
+
+                    if vba_changes:
+                        logger.debug(f"Watchfiles detected VBA changes: {vba_changes}")
 
                     for change_type, path in changes:
                         try:
