@@ -1,7 +1,6 @@
 """CLI option debugging tests that write effective values to files."""
 
 import pytest
-import os
 import subprocess
 from pathlib import Path
 from .helpers import CLITester, temp_office_doc
@@ -171,7 +170,7 @@ class TestCLIOptionsDebugging:
         # Create config file with specific options
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{Path(test_file).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_dir}"
 {CONFIG_KEY_VERBOSE} = true
 {CONFIG_KEY_RUBBERDUCK_FOLDERS} = false
@@ -228,12 +227,12 @@ class TestCLIOptionsDebugging:
         test_file.parent.mkdir(parents=True)
         
         # Use placeholders in configuration
-        vba_directory_with_placeholders = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}modules{os.sep}{PLACEHOLDER_FILE_NAME}"
-        backup_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}backups"
+        vba_directory_with_placeholders = f"{PLACEHOLDER_CONFIG_PATH}/modules/{PLACEHOLDER_FILE_NAME}"
+        backup_path = f"{PLACEHOLDER_FILE_PATH}/backups"
         
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{Path(test_file).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_with_placeholders}"
 {CONFIG_KEY_VERBOSE} = true
 
@@ -255,8 +254,8 @@ output_template = "{PLACEHOLDER_VBA_PROJECT}_exported"
         expected_config_path = str(config_dir)
         expected_file_path = str(test_file.parent)
         expected_file_name = test_file.stem
-        expected_vba_dir = f"{expected_config_path}{os.sep}modules{os.sep}{expected_file_name}"
-        expected_backup_dir = f"{expected_file_path}{os.sep}backups"
+        expected_vba_dir = f"{expected_config_path}/modules/{expected_file_name}"
+        expected_backup_dir = f"{expected_file_path}/backups"
         
         # Extract CLI information
         cli_info = self.extract_cli_information(cli_args, result)
@@ -300,8 +299,8 @@ output_template = "{PLACEHOLDER_VBA_PROJECT}_exported"
         # Config file specifies certain values
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{config_file_path}"
-{CONFIG_KEY_VBA_DIRECTORY} = "{config_vba_dir}"
+{CONFIG_KEY_FILE} = "{Path(config_file_path).as_posix()}"
+{CONFIG_KEY_VBA_DIRECTORY} = "{Path(config_vba_dir).as_posix()}"
 {CONFIG_KEY_VERBOSE} = false
 {CONFIG_KEY_RUBBERDUCK_FOLDERS} = false
 """
@@ -353,11 +352,11 @@ output_template = "{PLACEHOLDER_VBA_PROJECT}_exported"
         cli = CLITester(f"{vba_app}-vba")
         
         # Create config with placeholders for real document
-        vba_path_template = f"{PLACEHOLDER_FILE_PATH}{os.sep}{PLACEHOLDER_VBA_PROJECT}-{PLACEHOLDER_FILE_NAME}"
+        vba_path_template = f"{PLACEHOLDER_FILE_PATH}/{PLACEHOLDER_VBA_PROJECT}-{PLACEHOLDER_FILE_NAME}"
         
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{temp_office_doc}"
+{CONFIG_KEY_FILE} = "{Path(temp_office_doc).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_path_template}"
 {CONFIG_KEY_VERBOSE} = true
 {CONFIG_KEY_RUBBERDUCK_FOLDERS} = true
@@ -381,7 +380,7 @@ overwrite_existing = true
         # Calculate expected values
         file_path = str(temp_office_doc.parent)
         file_name = temp_office_doc.stem
-        expected_vba_dir = f"{file_path}{os.sep}VBAProject-{file_name}"  # Expected after placeholder resolution
+        expected_vba_dir = f"{file_path}/VBAProject-{file_name}"  # Expected after placeholder resolution
         
         # Extract CLI information
         cli_info = self.extract_cli_information(cli_args, result)
@@ -455,7 +454,7 @@ application = "{vba_app}"
                 "config": f"""
 [{CONFIG_SECTION_GENERAL}]
 {CONFIG_KEY_FILE} = "test{OFFICE_MACRO_EXTENSIONS[vba_app]}"
-{CONFIG_KEY_VBA_DIRECTORY} = "{PLACEHOLDER_CONFIG_PATH}{os.sep}vba-files"
+{CONFIG_KEY_VBA_DIRECTORY} = "{PLACEHOLDER_CONFIG_PATH}/vba-files"
 """,
                 "args": ["export", "--help"]
             }

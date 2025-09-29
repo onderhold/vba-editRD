@@ -16,7 +16,7 @@ def pytest_configure(config):
     """Register custom marks."""
     markers = [
         "excel: mark test as Excel-specific",
-        "word: mark test as Word-specific",
+        "word: mark test as Word-specific", 
         "access: mark test as Access-specific",
         "office: mark test as general Office test",
         "com: marks tests that require COM initialization",
@@ -24,6 +24,27 @@ def pytest_configure(config):
     ]
     for marker in markers:
         config.addinivalue_line("markers", marker)
+
+
+def pytest_generate_tests(metafunc):
+    """Dynamically parametrize vba_app based on command line options."""
+    if "vba_app" in metafunc.fixturenames:
+        # Import here to avoid circular import issues
+        from tests.cli.helpers import get_installed_apps
+        
+        # Get selected apps from command line
+        apps_option = metafunc.config.getoption("--apps")
+        if apps_option.lower() == "all":
+            selected_apps = ["excel", "word", "access"]
+        else:
+            selected_apps = [app.strip().lower() for app in apps_option.split(",")]
+            valid_apps = ["excel", "word", "access"]
+            invalid_apps = [app for app in selected_apps if app not in valid_apps]
+            if invalid_apps:
+                raise ValueError(f"Invalid apps: {invalid_apps}. Valid options: {valid_apps}")
+
+        apps = get_installed_apps(selected_apps=selected_apps)
+        metafunc.parametrize("vba_app", apps, ids=lambda x: f"{x}-vba")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -48,6 +69,14 @@ def pytest_collection_modifyitems(config, items):
         # If test has app-specific markers and none match selected apps, skip it
         if test_apps and not any(app in selected_apps for app in test_apps):
             item.add_marker(pytest.mark.skip(reason=f"Test requires {test_apps} but only {selected_apps} selected"))
+
+
+@pytest.fixture
+def vba_app():
+    """VBA application fixture - will be parametrized by pytest_generate_tests."""
+    # This fixture body will never execute because pytest_generate_tests
+    # will parametrize it with actual values
+    pass
 
 
 @pytest.fixture

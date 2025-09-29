@@ -1,4 +1,3 @@
-
 onderhold: how can I set up automated testing in this project? Are there alredy some provisions in place? (I am new to this code and Python in general.)
 
 GitHub Copilot: Great question! Looking at your project, there are already excellent testing provisions in place. Let me walk you through what's already set up and how to use it.
@@ -6,6 +5,7 @@ GitHub Copilot: Great question! Looking at your project, there are already excel
 ## What's Already Set Up
 
 ### 1. **Pytest Framework**
+
 The project uses pytest as the testing framework, which is already configured in pyproject.toml:
 
 ```toml
@@ -15,24 +15,29 @@ addopts = "-ra -q --strict-markers --strict-config"
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow",
-    "integration: marks tests as integration tests", 
+    "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
 ]
 ```
 
 ### 2. **Test Files**
+
 There are comprehensive test files already written:
+
 - test_office_vba.py - Tests for VBA handling
 - test_utils.py - Tests for utility functions
 - conftest.py - Pytest configuration
 
 ### 3. **GitHub Actions CI/CD**
+
 Automated testing runs on GitHub via `test.yaml`:
+
 - Tests on Windows (required for Office COM)
 - Tests Python versions 3.9-3.13
 - Runs on every push/PR to `dev` branch
 
 ### 4. **Coverage Reporting**
+
 Coverage tracking is configured in pyproject.toml:
 
 ```toml
@@ -68,6 +73,9 @@ pytest -m "not slow"
 # Test only Excel
 pytest tests/test_cli.py --apps excel -v
 
+# Single test case for Excel, e.g. config file handling
+pytest tests/cli/test_config.py::TestCLIConfig::test_config_file_with_real_document --apps excel -v
+
 # Test Excel and Word
 pytest tests/test_cli.py --apps excel,word -v
 
@@ -89,6 +97,7 @@ pytest tests/test_cli.py --apps word -m integration -v
 ```
 
 ### **View Coverage Report**:
+
 After running with `--cov-report=html`, open `htmlcov/index.html` in your browser.
 
 ## Test Categories
@@ -103,7 +112,7 @@ The project uses test markers to organize tests:
 
 When you add Rubberduck folder support and replace watchgod with watchfiles, you should add tests like:
 
-````python
+```python
 # In tests/test_excel_vba_cli.py (new file)
 import pytest
 from vba_edit.excel_vba import create_cli_parser
@@ -121,18 +130,20 @@ def test_watchfiles_import():
         assert True
     except ImportError:
         pytest.fail("watchfiles not available")
-````
+```
 
 ## Recommended Development Workflow
 
 1. **Make your changes** (Rubberduck folders + watchfiles)
 
 2. **Run tests locally**:
+
    ```bash
    pytest -m "not integration" -v
    ```
 
 3. **Check coverage**:
+
    ```bash
    pytest --cov=src --cov-report=html -m "not integration"
    ```
@@ -140,6 +151,7 @@ def test_watchfiles_import():
 4. **Add new tests** for your features
 
 5. **Run full test suite**:
+
    ```bash
    pytest -v
    ```

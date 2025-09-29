@@ -1,7 +1,6 @@
 """Configuration file functionality tests."""
 
 import pytest
-import os
 from pathlib import Path
 from .helpers import CLITester, temp_office_doc
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS
@@ -98,8 +97,7 @@ class TestCLIConfig:
         config_dir = tmp_path / "config"
         config_dir.mkdir()
 
-        # Use os.sep for OS-agnostic path separator
-        vba_modules_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}vba-modules"
+        vba_modules_path = f"{PLACEHOLDER_CONFIG_PATH}/vba-modules"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
@@ -117,14 +115,13 @@ class TestCLIConfig:
 
         # Create a mock Office file path for testing
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
-        test_file = tmp_path / f"MyProject{extension}"
+        test_file = Path(tmp_path) / f"MyProject{extension}"
 
-        # Use os.sep for OS-agnostic path separator
-        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}vba-{PLACEHOLDER_FILE_NAME}"
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}/vba-{PLACEHOLDER_FILE_NAME}"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{test_file.as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
 """
         config_file = self.create_test_config(tmp_path, config_content)
@@ -138,14 +135,13 @@ class TestCLIConfig:
         cli = CLITester(f"{vba_app}-vba")
 
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
-        test_file = tmp_path / f"TestDoc{extension}"
+        test_file = Path(tmp_path) / f"TestDoc{extension}"
 
-        # Use os.sep for OS-agnostic path separator
-        vba_directory_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}{PLACEHOLDER_FILE_NAME}-modules"
+        vba_directory_path = f"{PLACEHOLDER_CONFIG_PATH}/{PLACEHOLDER_FILE_NAME}-modules"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{test_file.as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
 """
         config_file = self.create_test_config(tmp_path, config_content)
@@ -160,13 +156,12 @@ class TestCLIConfig:
         """Test configuration file with actual Office document operations."""
         cli = CLITester(f"{vba_app}-vba")
 
-        # Use os.sep for OS-agnostic path separator
-        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}vba-{PLACEHOLDER_FILE_NAME}"
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}/vba-{PLACEHOLDER_FILE_NAME}"
 
         # Create config that uses placeholders
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{temp_office_doc}"
+{CONFIG_KEY_FILE} = "{Path(temp_office_doc).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
 {CONFIG_KEY_VERBOSE} = true
 {CONFIG_KEY_RUBBERDUCK_FOLDERS} = true
@@ -174,7 +169,7 @@ class TestCLIConfig:
         config_file = self.create_test_config(tmp_path, config_content)
 
         # Test export using config file
-        result = cli.run(["export", "--conf", str(config_file)])
+        result = cli.run(["export", "--conf", str(config_file), "--verbose", "--logfile"])
 
         # Should succeed or show meaningful error
         success = result.returncode == 0 or "No VBA components found" in (result.stdout + result.stderr)
@@ -198,12 +193,11 @@ class TestCLIConfig:
 
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
 
-        # Use os.sep for OS-agnostic relative path
-        relative_file_path = f"..{os.sep}documents{os.sep}test{extension}"
+        relative_file_path = f"../documents/test{extension}"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{relative_file_path}"
+{CONFIG_KEY_FILE} = "{Path(relative_file_path).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "vba-output"
 """
         config_file = self.create_test_config(config_dir, config_content)
@@ -219,13 +213,12 @@ class TestCLIConfig:
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
         test_file = tmp_path / f"Project{extension}"
 
-        # Use os.sep for OS-agnostic path separators
-        vba_modules_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}modules"
-        backup_path = f"{PLACEHOLDER_CONFIG_PATH}{os.sep}backups{os.sep}{PLACEHOLDER_FILE_NAME}"
+        vba_modules_path = f"{PLACEHOLDER_FILE_PATH}/modules"
+        backup_path = f"{PLACEHOLDER_CONFIG_PATH}/backups/{PLACEHOLDER_FILE_NAME}"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{Path(test_file).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_modules_path}"
 
 [office]
@@ -247,12 +240,11 @@ backup_directory = "{backup_path}"
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
         test_file = tmp_path / f"TestFile{extension}"
 
-        # Use os.sep for OS-agnostic path separator
-        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}{os.sep}{PLACEHOLDER_VBA_PROJECT}-modules"
+        vba_directory_path = f"{PLACEHOLDER_FILE_PATH}/{PLACEHOLDER_VBA_PROJECT}-modules"
 
         config_content = f"""
 [{CONFIG_SECTION_GENERAL}]
-{CONFIG_KEY_FILE} = "{test_file}"
+{CONFIG_KEY_FILE} = "{Path(test_file).as_posix()}"
 {CONFIG_KEY_VBA_DIRECTORY} = "{vba_directory_path}"
 """
         config_file = self.create_test_config(tmp_path, config_content)

@@ -37,7 +37,7 @@ class TestCLIBasic:
         """Test handling of missing file."""
         cli = CLITester(f"{vba_app}-vba")
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
-        cli.assert_error(["import", "-f", f"nonexistent{extension}"], "Document not found")
+        cli.assert_error(["import", "-f", f"nonexistent{extension}"], "File not found")
 
     @pytest.mark.office
     def test_rubberduck_folders_option(self, vba_app):

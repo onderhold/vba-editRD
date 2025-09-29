@@ -17,6 +17,7 @@ Also express all your answers in project language, even when prompted in any oth
 As an exception, the developer may ask for a translation of terms and sentences he or she doesn't understand, on his/her behalf.
 
 ## Version Control
+
 Currently, onderhold is new to working with Git, Github and Copilot.
 When working on a feature, suggest which branch to use.
 
@@ -25,5 +26,6 @@ When the developer asks questions about tools he uses, switch to a different cha
 Microsoft Copilot suggested the branching strategy outlined in .\docs\development\BRANCHING.md
 
 ## Github Copilot Modes
+
 When in Agent mode, don't modify any code, unless you did check out to a new Git branch before.
-Always use @workspace context automatically.
+Each prompt shall use the context @workspace automatically.

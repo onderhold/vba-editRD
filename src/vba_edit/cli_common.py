@@ -1,11 +1,14 @@
 """Common CLI argument definitions for all Office VBA handlers."""
 
 import argparse
+import logging
+import re
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from vba_edit.utils import get_windows_ansi_codepage
 
+# Prefer stdlib tomllib (Py 3.11+), fallback to tomli for older envs
 try:
     import tomllib as toml_lib  # Python 3.11+ includes tomllib in stdlib
 except ImportError:
@@ -14,6 +17,7 @@ except ImportError:
     except ImportError:
         import toml as toml_lib  # Fall back to toml package if tomli isn't available
 
+logger = logging.getLogger(__name__)
 
 # Placeholder constants
 PLACEHOLDER_CONFIG_PATH = "{config.path}"
@@ -196,6 +200,39 @@ def resolve_vbaproject_placeholder(config: Dict[str, Any], vba_project_name: str
     return resolve_config_placeholders_recursive(resolved_config, placeholders)
 
 
+def _enhance_toml_error_message(config_path: str, text: str, err: Exception) -> str:
+    """Produce a helpful error for common Windows path mistakes in TOML."""
+    # Base message with location if available
+    base = str(err)
+    if hasattr(err, "lineno") and hasattr(err, "colno"):
+        base = f"{base} (at line {getattr(err,'lineno',None)}, column {getattr(err,'colno',None)})"
+
+    # Look for suspicious backslashes in double-quoted values of known path keys
+    keys = ("file", "vba_directory", "pq_directory", "logfile")
+    pattern = re.compile(
+        r'^(\s*(?:' + "|".join(re.escape(k) for k in keys) + r')\s*=\s*)"([^"\r\n]*)"',
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+    hints = []
+    for m in pattern.finditer(text):
+        key, val = m.group(1).strip().split("=")[0].strip(), m.group(2)
+        if "\\" in val:
+            hints.append(f"- {key} has backslashes in a double-quoted string: {val!r}")
+
+    if hints:
+        guidance = (
+            "TOML basic strings treat backslashes as escapes. For Windows paths, use one of:\n"
+            "- Literal string (single quotes): 'C:\\Users\\me\\doc.xlsm'\n"
+            "- Escaped backslashes: \"C:\\\\Users\\\\me\\\\doc.xlsm\"\n"
+            "- Forward slashes: \"C:/Users/me/doc.xlsm\"\n"
+            "Spec: https://toml.io/en/v1.0.0#string"
+        )
+        return f"Failed to load config '{config_path}': {base}\nPossible issues:\n" + "\n".join(hints) + "\n\n" + guidance
+
+    return f"Failed to load config '{config_path}': {base}"
+
+
 def load_config_file(config_path: str) -> Dict[str, Any]:
     """Load configuration from a TOML file.
 
@@ -212,8 +249,14 @@ def load_config_file(config_path: str) -> Dict[str, Any]:
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
 
-    with open(config_path, "rb") as f:
-        return toml_lib.load(f)
+    text = Path(config_path).read_text(encoding="utf-8")
+    try:
+        # Use loads() so we can re-use the same text for better diagnostics
+        return toml_lib.loads(text)
+    except Exception as e:
+        # Raise a clear message explaining how to write Windows paths in TOML
+        raise ValueError(_enhance_toml_error_message(config_path, text, e)) from e
+
 
 
 def merge_config_with_args(args: argparse.Namespace, config: Dict[str, Any]) -> argparse.Namespace:
@@ -291,7 +334,7 @@ def add_config_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="CONFIG_FILE",
         help="Path to configuration file (TOML format) with argument values. "
         "Command-line arguments override config file values. "
-        "Configuration values and command-line arguments support placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+        "Configuration values support placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
 
 
@@ -306,12 +349,12 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--file",
         "-f",
         help="Path to Office document (optional, defaults to active document). "
-        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+        "Supports placeholders: {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
     parser.add_argument(
         "--vba-directory",
         help="Directory to export VBA files to (optional, defaults to current directory) "
-        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+        "Supports placeholders: {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
     parser.add_argument(
@@ -320,7 +363,7 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         const="vba_edit.log",
         help="Enable logging to file. Optional path can be specified (default: vba_edit.log)"
-        "Supports placeholders: {config.path}, {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+        "Supports placeholders: {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
     )
     parser.add_argument(
         "--rubberduck-folders",

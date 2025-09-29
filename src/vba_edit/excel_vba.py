@@ -82,6 +82,7 @@ IMPORTANT:
     parser.add_argument(
         "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
     )
+    add_common_arguments(parser)
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -115,8 +116,7 @@ IMPORTANT:
     check_parser = subparsers.add_parser(
         "check", help="Check if 'Trust Access to the MS Excel VBA project object model' is enabled"
     )
-    check_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
-    check_parser.add_argument("--logfile", "-l", nargs="?", const="vba_edit.log", help="Enable logging to file")
+    add_common_arguments(check_parser)
 
     return parser
 
@@ -128,6 +128,9 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
         logger.debug(f"Starting excel-vba command: {args.command}")
         logger.debug(f"Command arguments: {vars(args)}")
+
+        # Ensure paths exist early (creates vba_directory if provided)
+        validate_paths(args)
 
         # Handle xlwings option if present
         if getattr(args, "xlwings", False):
@@ -255,7 +258,7 @@ def handle_xlwings_command(args):
 def validate_paths(args: argparse.Namespace) -> None:
     """Validate file and directory paths from command line arguments."""
     if args.file and not Path(args.file).exists():
-        raise FileNotFoundError(f"Workbook not found: {args.file}")
+        raise FileNotFoundError(f"File not found: {args.file}")
 
     if args.vba_directory:
         vba_dir = Path(args.vba_directory)
@@ -275,6 +278,12 @@ def main() -> None:
 
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
+
+        # DEBUG: show final args that the app will use
+        logger.debug(f"Final CLI args after config/placeholder resolution: {vars(args)}")
+
+        # Create target directories and validate inputs early
+        validate_paths(args)
 
         # Run 'check' command (Check if VBA project model is accessible )
         if args.command == "check":
