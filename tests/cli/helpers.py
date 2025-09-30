@@ -1,26 +1,157 @@
 """Test helpers for CLI interface testing."""
 
 import subprocess
+import time
 from typing import List, Optional
 import pytest
 import win32com.client
 import pythoncom
 from pathlib import Path
-import os
+import atexit
 
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS, SUPPORTED_APPS
 from vba_edit.exceptions import VBAError
-from vba_edit.cli_common import (
-    PLACEHOLDER_CONFIG_PATH,
-    PLACEHOLDER_FILE_NAME,
-    PLACEHOLDER_FILE_PATH,
-    PLACEHOLDER_VBA_PROJECT,
-    CONFIG_SECTION_GENERAL,
-    CONFIG_KEY_FILE,
-    CONFIG_KEY_VBA_DIRECTORY,
-    CONFIG_KEY_VERBOSE,
-    CONFIG_KEY_RUBBERDUCK_FOLDERS,
-)
+
+# Global application instances
+_app_instances = {}
+_initialized = False
+
+
+def get_or_create_app(app_type):
+    """Get existing session application instance or create new one."""
+    global _app_instances, _initialized
+
+    if not _initialized:
+        # Register cleanup on exit
+        atexit.register(cleanup_all_apps)
+        _initialized = True
+
+    if app_type not in _app_instances:
+        print(f"Creating {app_type} instance for test session...")
+
+        # Application configurations
+        app_configs = {"excel": "Excel.Application", "word": "Word.Application", "access": "Access.Application"}
+
+        if app_type not in app_configs:
+            raise ValueError(f"Unsupported application type: {app_type}")
+
+        try:
+            # Initialize COM
+            pythoncom.CoInitialize()
+
+            # Create application instance
+            app = win32com.client.Dispatch(app_configs[app_type])
+
+            # Wait for application to be ready
+            _wait_for_app_ready(app, app_type)
+
+            # Configure application
+            _configure_app(app, app_type)
+
+            _app_instances[app_type] = app
+            print(f"{app_type.title()} instance ready for testing")
+
+        except Exception as e:
+            print(f"Failed to create {app_type} instance: {e}")
+            raise
+
+    return _app_instances[app_type]
+
+
+def _wait_for_app_ready(app, app_type, timeout=10.0):
+    """Wait for application to be ready for operations."""
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            # Test basic property access to ensure app is ready
+            _ = app.Name
+            time.sleep(0.2)  # Small additional delay
+            return
+        except:
+            time.sleep(0.1)
+
+    raise RuntimeError(f"{app_type} application not ready within {timeout} seconds")
+
+
+def _configure_app(app, app_type):
+    """Configure application properties for testing."""
+    config_attempts = 3
+
+    # Common properties to set
+    properties = [
+        ("DisplayAlerts", False),
+        ("Visible", True),  # Keep visible for debugging
+    ]
+
+    # App-specific properties
+    if app_type == "excel":
+        properties.extend(
+            [
+                ("ScreenUpdating", True),
+                ("EnableEvents", True),
+            ]
+        )
+    elif app_type == "word":
+        properties.extend(
+            [
+                ("ShowAnimation", False),
+            ]
+        )
+
+    # Set properties with retry logic
+    for prop_name, prop_value in properties:
+        for attempt in range(config_attempts):
+            try:
+                setattr(app, prop_name, prop_value)
+                break
+            except Exception as e:
+                if attempt == config_attempts - 1:
+                    print(f"Warning: Could not set {app_type}.{prop_name}: {e}")
+                else:
+                    time.sleep(0.1)
+
+
+def cleanup_all_apps():
+    """Clean up all application instances."""
+    global _app_instances
+
+    for app_type, app in _app_instances.items():
+        try:
+            print(f"Closing {app_type} at end of test session...")
+
+            # Close all documents first
+            _close_all_documents(app, app_type)
+
+            # Quit the application
+            app.Quit()
+            print(f"Successfully closed {app_type}")
+
+        except Exception as e:
+            print(f"Warning: Could not quit {app_type}: {e}")
+
+    _app_instances.clear()
+
+
+def _close_all_documents(app, app_type):
+    """Close all open documents for an application."""
+    try:
+        if app_type == "excel":
+            while app.Workbooks.Count > 0:
+                app.Workbooks(1).Close(SaveChanges=False)
+        elif app_type == "word":
+            while app.Documents.Count > 0:
+                app.Documents(1).Close(SaveChanges=False)
+        elif app_type == "access":
+            # Access handles this differently
+            pass
+    except Exception as e:
+        print(f"Warning: Could not close all documents for {app_type}: {e}")
+
+
+def force_cleanup_apps():
+    """Force cleanup - useful for manual cleanup during development."""
+    cleanup_all_apps()
 
 
 class ReferenceDocuments:
@@ -34,30 +165,31 @@ class ReferenceDocuments:
 
     def __enter__(self):
         """Open the document and create a basic VBA project."""
-        app_configs = {
-            "word": {
-                "app_name": "Word.Application",
-                "doc_method": lambda app: app.Documents.Add(),
-                "save_format": 13,  # wdFormatDocumentMacroEnabled
-            },
-            "excel": {
-                "app_name": "Excel.Application",
-                "doc_method": lambda app: app.Workbooks.Add(),
-                "save_format": 52,  # xlOpenXMLWorkbookMacroEnabled
-            },
-        }
-
         try:
+            app_configs = {
+                "word": {
+                    "doc_method": lambda app: app.Documents.Add(),
+                    "save_format": 13,  # wdFormatDocumentMacroEnabled
+                },
+                "excel": {
+                    "doc_method": lambda app: app.Workbooks.Add(),
+                    "save_format": 52,  # xlOpenXMLWorkbookMacroEnabled
+                },
+            }
+
             if self.app_type not in app_configs:
                 raise ValueError(f"Unsupported application type: {self.app_type}")
 
             config = app_configs[self.app_type]
-            # Initialize COM here
-            pythoncom.CoInitialize()
 
-            self.app = win32com.client.Dispatch(config["app_name"])
-            self.app.DisplayAlerts = False
-            self.app.Visible = False
+            # Use the session-wide application instance
+            self.app = get_or_create_app(self.app_type)
+
+            # Create new document
+            self.doc = config["doc_method"](self.app)
+
+            # Create new document
+            print(f"Creating new {self.app_type} document...")
             self.doc = config["doc_method"](self.app)
 
             try:
@@ -95,6 +227,7 @@ class ReferenceDocuments:
                 ) from ve
 
             self.doc.SaveAs(str(self.path), config["save_format"])
+            print(f"Created and saved {self.app_type} document: {self.path}")
             return self.path
 
         except Exception as e:
@@ -110,20 +243,8 @@ class ReferenceDocuments:
                 pass
             self.doc = None
 
-        if hasattr(self, "app") and self.app:
-            try:
-                self.app.Quit()
-            except Exception:
-                pass
-            self.app = None
-
-        try:
-            pythoncom.CoUninitialize()
-        except Exception:
-            pass
-
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Clean up by closing document and quitting application."""
+        """Close the document but keep the application open."""
         self._cleanup()
 
 

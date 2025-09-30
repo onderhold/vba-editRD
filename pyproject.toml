@@ -124,8 +124,9 @@ module = [
     "win32com.*",
     "pythoncom.*",
     "pywintypes.*",
-    "watchgod.*",
+    "watchfiles.*",  # replaced watchgod
 ]
+ignore_missing_imports = true
 
 # Pytest Configuration
 [tool.pytest.ini_options]

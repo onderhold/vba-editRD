@@ -108,30 +108,6 @@ The project uses test markers to organize tests:
 - **Integration tests**: Tests that interact with actual Office applications
 - **Slow tests**: Tests that take longer to run
 
-## Adding Your Own Tests
-
-When you add Rubberduck folder support and replace watchgod with watchfiles, you should add tests like:
-
-```python
-# In tests/test_excel_vba_cli.py (new file)
-import pytest
-from vba_edit.excel_vba import create_cli_parser
-
-def test_rubberduck_folders_option():
-    """Test Rubberduck folders CLI option."""
-    parser = create_cli_parser()
-    args = parser.parse_args(['edit', '--rubberduck-folders'])
-    assert args.rubberduck_folders is True
-
-def test_watchfiles_import():
-    """Test that watchfiles can be imported."""
-    try:
-        from watchfiles import watch, Change
-        assert True
-    except ImportError:
-        pytest.fail("watchfiles not available")
-```
-
 ## Recommended Development Workflow
 
 1. **Make your changes** (Rubberduck folders + watchfiles)
