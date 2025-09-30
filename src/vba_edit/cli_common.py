@@ -47,6 +47,7 @@ CONFIG_KEY_LOGFILE = "logfile"
 CONFIG_KEY_RUBBERDUCK_FOLDERS = "rubberduck_folders"
 CONFIG_KEY_INVISIBLE_MODE = "invisible_mode"
 CONFIG_KEY_MODE = "mode"
+CONFIG_KEY_OPEN_FOLDER = "open_folder"
 
 
 def resolve_placeholders_in_value(value: str, placeholders: Dict[str, str]) -> str:
@@ -205,12 +206,12 @@ def _enhance_toml_error_message(config_path: str, text: str, err: Exception) -> 
     # Base message with location if available
     base = str(err)
     if hasattr(err, "lineno") and hasattr(err, "colno"):
-        base = f"{base} (at line {getattr(err,'lineno',None)}, column {getattr(err,'colno',None)})"
+        base = f"{base} (at line {getattr(err, 'lineno', None)}, column {getattr(err, 'colno', None)})"
 
     # Look for suspicious backslashes in double-quoted values of known path keys
     keys = ("file", "vba_directory", "pq_directory", "logfile")
     pattern = re.compile(
-        r'^(\s*(?:' + "|".join(re.escape(k) for k in keys) + r')\s*=\s*)"([^"\r\n]*)"',
+        r"^(\s*(?:" + "|".join(re.escape(k) for k in keys) + r')\s*=\s*)"([^"\r\n]*)"',
         re.IGNORECASE | re.MULTILINE,
     )
 
@@ -224,11 +225,13 @@ def _enhance_toml_error_message(config_path: str, text: str, err: Exception) -> 
         guidance = (
             "TOML basic strings treat backslashes as escapes. For Windows paths, use one of:\n"
             "- Literal string (single quotes): 'C:\\Users\\me\\doc.xlsm'\n"
-            "- Escaped backslashes: \"C:\\\\Users\\\\me\\\\doc.xlsm\"\n"
-            "- Forward slashes: \"C:/Users/me/doc.xlsm\"\n"
+            '- Escaped backslashes: "C:\\\\Users\\\\me\\\\doc.xlsm"\n'
+            '- Forward slashes: "C:/Users/me/doc.xlsm"\n'
             "Spec: https://toml.io/en/v1.0.0#string"
         )
-        return f"Failed to load config '{config_path}': {base}\nPossible issues:\n" + "\n".join(hints) + "\n\n" + guidance
+        return (
+            f"Failed to load config '{config_path}': {base}\nPossible issues:\n" + "\n".join(hints) + "\n\n" + guidance
+        )
 
     return f"Failed to load config '{config_path}': {base}"
 
@@ -256,7 +259,6 @@ def load_config_file(config_path: str) -> Dict[str, Any]:
     except Exception as e:
         # Raise a clear message explaining how to write Windows paths in TOML
         raise ValueError(_enhance_toml_error_message(config_path, text, e)) from e
-
 
 
 def merge_config_with_args(args: argparse.Namespace, config: Dict[str, Any]) -> argparse.Namespace:
@@ -369,6 +371,12 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--rubberduck-folders",
         action="store_true",
         help="If a module contains a RubberduckVBA '@Folder annotation, organize folders in the file system accordingly",
+    )
+    parser.add_argument(
+        "--open-folder",
+        action="store_true",
+        default=False,
+        help="Open the export directory in file explorer after successful export",
     )
 
 

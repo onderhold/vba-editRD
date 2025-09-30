@@ -44,6 +44,7 @@ invisible_mode = false
 
 # Execution mode: "export", "import", "sync"
 mode = "export"
+open_folder = true # Open the export directory in file explorer after export, valid for export mode only
 
 [office]
 # Office application to use ("excel", "word", "access")

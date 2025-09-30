@@ -638,6 +638,7 @@ class OfficeVBAHandler(ABC):
         verbose (bool): Verbose logging flag
         save_headers (bool): Header saving flag
         use_rubberduck_folders (bool): Using Rubberduck folder structure flag
+        open_folder (bool): Whether to open the VBA directory after export
         app: Office application COM object
         doc: Office document COM object
         component_handler (VBAComponentHandler): Utility handler for VBA components
@@ -651,6 +652,7 @@ class OfficeVBAHandler(ABC):
         verbose: bool = False,
         save_headers: bool = False,
         use_rubberduck_folders: bool = False,
+        open_folder: bool = False,
     ):
         """Initialize the VBA handler."""
         try:
@@ -660,6 +662,7 @@ class OfficeVBAHandler(ABC):
             self.verbose = verbose
             self.save_headers = save_headers
             self.use_rubberduck_folders = use_rubberduck_folders
+            self.open_folder = open_folder
             self.app = None
             self.doc = None
             self.component_handler = VBAComponentHandler(use_rubberduck_folders)
@@ -673,6 +676,7 @@ class OfficeVBAHandler(ABC):
             logger.debug(f"Using encoding: {encoding}")
             logger.debug(f"Save headers: {save_headers}")
             logger.debug(f"Rubberduck folders: {use_rubberduck_folders}")
+            logger.debug(f"Open folder after export: {open_folder}")
 
         except DocumentNotFoundError:
             raise  # Let it propagate
@@ -1334,13 +1338,17 @@ class OfficeVBAHandler(ABC):
                 self._save_metadata(encoding_data)
                 logger.debug("Metadata saved")
 
-            # Show exported files to user
+            # Show exported files to user if requested
 
             # Plattform independent way to open the directory commented out
             # as only Windows is supported for now
 
             # try:
-            os.startfile(str(self.vba_dir))
+            if self.open_folder:
+                logger.debug("Opening export directory...")
+                os.startfile(str(self.vba_dir))
+            else:
+                logger.info(f"VBA modules exported to: {self.vba_dir}")
             # except AttributeError:
             #     # os.startfile is Windows only, use platform-specific alternatives
             #     if sys.platform == "darwin":

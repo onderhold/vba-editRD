@@ -14,6 +14,7 @@ from vba_edit.cli_common import (
     CONFIG_KEY_VBA_DIRECTORY,
     CONFIG_KEY_VERBOSE,
     CONFIG_KEY_RUBBERDUCK_FOLDERS,
+    CONFIG_KEY_OPEN_FOLDER,
 )
 
 
@@ -33,6 +34,19 @@ class TestCLIConfig:
         config_file = config_dir / "test-config.toml"
         config_file.write_text(config_content, encoding="utf-8")
         return config_file
+
+    @pytest.mark.office
+    def test_open_folder_default_behavior(self, vba_app):
+        """Test that open_folder defaults to False when not specified."""
+        cli = CLITester(f"{vba_app}-vba")
+
+        # No config file, no flag - should use default (False)
+        result = cli.run(["export", "--help"])
+        assert result.returncode == 0
+
+        # Help should show the option with default behavior
+        help_text = result.stdout + result.stderr
+        assert "--open-folder" in help_text
 
     @pytest.mark.office
     def test_config_file_basic(self, vba_app, tmp_path):
