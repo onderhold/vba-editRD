@@ -17,7 +17,13 @@ from vba_edit.exceptions import (
 from vba_edit.office_vba import WordVBAHandler
 from vba_edit.path_utils import get_document_paths
 from vba_edit.utils import get_active_office_document, get_windows_ansi_codepage, setup_logging
-from vba_edit.cli_common import add_common_arguments, add_encoding_arguments, add_header_arguments
+from vba_edit.cli_common import (
+    add_common_arguments,
+    process_config_file,
+    add_encoding_arguments,
+    add_header_arguments,
+    add_metadata_arguments,
+)
 
 
 # Configure module logger
@@ -94,19 +100,14 @@ IMPORTANT:
     add_common_arguments(export_parser)
     add_encoding_arguments(export_parser, default_encoding)
     add_header_arguments(export_parser)
-    export_parser.add_argument(
-        "--save-metadata",
-        "-m",
-        action="store_true",
-        help="Save metadata file with character encoding information (default: False)",
-    )
+    add_metadata_arguments(export_parser)
 
     # Check command
     check_parser = subparsers.add_parser(
-        "check", help="Check if 'Trust Access to the MS Word VBA project object model' is enabled"
+        "check",
+        help="Check if 'Trust Access to the MS Word VBA project object model' is enabled",
     )
-    check_parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
-    check_parser.add_argument("--logfile", "-l", nargs="?", const="vba_edit.log", help="Enable logging to file")
+    add_common_arguments(check_parser)
 
     return parser
 
@@ -223,6 +224,12 @@ def main() -> None:
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
 
+        # DEBUG: show final args that the app will use
+        logger.debug(f"Final CLI args after config/placeholder resolution: {vars(args)}")
+
+        # Create target directories and validate inputs early
+        validate_paths(args)
+
         # Run 'check' command (Check if VBA project model is accessible )
         if args.command == "check":
             from vba_edit.utils import check_vba_trust_access
@@ -237,6 +244,7 @@ def main() -> None:
             sys.exit(0)
         else:
             handle_word_vba_command(args)
+
     except Exception as e:
         print(f"Critical error: {str(e)}", file=sys.stderr)
         sys.exit(1)

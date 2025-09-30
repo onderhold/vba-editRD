@@ -1134,13 +1134,10 @@ class OfficeVBAHandler(ABC):
                 watch_path = self.vba_dir
                 recursive = False
 
-            for changes in watch(
-                watch_path,
-                recursive=recursive,
-                ignore_patterns=["*.tmp", "*.temp", "*.bak"],
-                # watchfiles doesn't use regex patterns like watchgod
-                # We'll filter by extension in the loop
-            ):
+            # Define VBA file extensions we want to watch
+            vba_extensions = {".bas", ".cls", ".frm"}
+
+            for changes in watch(watch_path, recursive=recursive):
                 try:
                     # Check connection periodically
                     current_time = time.time()
@@ -1151,11 +1148,12 @@ class OfficeVBAHandler(ABC):
                         logger.debug("Connection check passed")
 
                     # Filter changes to only include VBA files
-                    vba_changes = [
-                        (change_type, path)
-                        for change_type, path in changes
-                        if Path(path).suffix.lower() in [".cls", ".frm", ".bas"]
-                    ]
+                    vba_changes = []
+                    for change_type, file_path in changes:
+                        path = Path(file_path)
+                        # Only include files with VBA extensions
+                        if path.suffix.lower() in vba_extensions:
+                            vba_changes.append((change_type, file_path))
 
                     if vba_changes:
                         logger.debug(f"Watchfiles detected VBA changes: {vba_changes}")

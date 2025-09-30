@@ -24,6 +24,7 @@ from vba_edit.cli_common import (
     process_config_file,
     add_encoding_arguments,
     add_header_arguments,
+    add_metadata_arguments,
     add_excel_specific_arguments,
 )
 
@@ -105,16 +106,12 @@ IMPORTANT:
     add_excel_specific_arguments(export_parser)
     add_encoding_arguments(export_parser, default_encoding)
     add_header_arguments(export_parser)
-    export_parser.add_argument(
-        "--save-metadata",
-        "-m",
-        action="store_true",
-        help="Save metadata file with character encoding information (default: False)",
-    )
+    add_metadata_arguments(export_parser)
 
     # Check command - only needs basic args
     check_parser = subparsers.add_parser(
-        "check", help="Check if 'Trust Access to the MS Excel VBA project object model' is enabled"
+        "check",
+        help="Check if 'Trust Access to the MS Excel VBA project object model' is enabled",
     )
     add_common_arguments(check_parser)
 
@@ -309,10 +306,6 @@ def main() -> None:
                 sys.exit("xlwings is not installed. Please install it with: pip install xlwings")
         else:
             handle_excel_vba_command(args)
-
-    except Exception as e:
-        print(f"Critical error: {str(e)}", file=sys.stderr)
-        sys.exit(1)
 
     except Exception as e:
         print(f"Critical error: {str(e)}", file=sys.stderr)

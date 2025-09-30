@@ -6,7 +6,7 @@
 # Path and filname of the Office document to work with.
 # The path can be relative to this TOML config file, which means it can also be left out,
 # so that 'file' will get searched for in the directory of this config file
-file = "C:/Users/YourName/Documents/example.xlsx"
+file = "C:/Users/YourName/Documents/example.xlsm"
 
 # Target directory for exporting/importing VBA modules and PowerQuery M code
 # either absolute path or relative to parent path of 'file' setting
@@ -16,8 +16,8 @@ file = "C:/Users/YourName/Documents/example.xlsx"
 # {general.file.fullname} will be replaced with the filename of the 'file' setting, including the file extension
 # {general.file.path} will be replaced with the parent path of the 'file' setting, after it has been resolved
 # {general.file.vbaproject} will be replaced with the VBA project name found within the office file
-vba_directory = "/vba-modules"
-pq_directory = "/pq-M"
+vba-directory = "./vba-modules"
+pq-directory = "./pq-M"
 
 # Encoding for reading/writing VBA files (e.g., "utf-8", "windows-1252")
 # valid codecs: see https://docs.python.org/3/library/codecs.html#standard-encodings
@@ -25,10 +25,10 @@ pq_directory = "/pq-M"
 encoding = "utf-8"
 
 # Automatically detect encoding if true
-detect_encoding = true
+detect-encoding = true
 
 # Save module headers (attributes) in separate files
-save_headers = false
+save-headers = false
 
 # Enable verbose logging
 verbose = true
@@ -37,44 +37,44 @@ verbose = true
 logfile = "C:/Users/YourName/excel-vba.log"
 
 # Use RubberduckVBA folder annotations for module organization
-rubberduck_folders = true
+rubberduck-folders = true
 
 # Run Office application in invisible mode (background, no window)
-invisible_mode = false
+invisible-mode = false
 
-# Execution mode: "export", "import", "sync"
-mode = "export"
-open_folder = true # Open the export directory in file explorer after export, valid for export mode only
+# Execution mode: "export", "import", "edit"
+# mode = "export"
+open-folder = true # Open the export directory in file explorer after export, valid for export mode only
 
 [office]
 # Office application to use ("excel", "word", "access")
 application = "excel"
 
 # Additional options for Office automation
-timeout_seconds = 60
+timeout-seconds = 60
 
 [excel]
 # Option to use xlwings for Excel operations (if installed)
-use_xlwings = false
+use-xlwings = false
 
 [advanced]
 # Custom document properties to export/import
-#export_custom_properties = true # planned
+#export-custom-properties = true # planned
 
 # Export PowerQuery M code
-#export_powerquery = false # planned
-#pq_directory = "/pq-lib"  # planned
+#export-powerquery = false # planned
+#pq-directory = "/pq-lib"  # planned
 # filename extension for PowerQuery M
-#pq_extension = # planned
+#pq-extension = # planned
 
 # Export additional Office document properties (e.g., XML parts, references)
-#export_document_properties = false # planned
+#export-document-properties = false # planned
 
 # Conflict resolution strategy: "last-writer-wins", "manual"
-#conflict_strategy = "last-writer-wins" # planned
+#conflict-strategy = "last-writer-wins" # planned
 
 # Notify about unsaved status of the office file
-#notify_unsaved_changes = true # planned
+#notify-unsaved-changes = true # planned
 
 # Hash algorithm for module change detection ("md5", "sha256")
-#hash_algorithm = "sha256" # planned
+#hash-algorithm = "sha256" # planned

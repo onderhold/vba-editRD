@@ -284,12 +284,13 @@ def merge_config_with_args(args: argparse.Namespace, config: Dict[str, Any]) -> 
             # Convert dashes to underscores for argument names
             arg_key = key.replace("-", "_")
 
-            # Only update if the arg wasn't explicitly set (is None or is the default)
+            # Only update if the arg wasn't explicitly set (is None)
             if arg_key in args_dict and args_dict[arg_key] is None:
                 args_dict[arg_key] = value
 
     # Store the full config for later access by handlers if needed
     args_dict["_config"] = config
+    args_dict["_config_file_path"] = getattr(args, "_config_file_path", None)
 
     # Convert back to a Namespace
     return argparse.Namespace(**args_dict)
@@ -370,12 +371,13 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--rubberduck-folders",
         action="store_true",
+        default=None,
         help="If a module contains a RubberduckVBA '@Folder annotation, organize folders in the file system accordingly",
     )
     parser.add_argument(
         "--open-folder",
         action="store_true",
-        default=False,
+        default=None,
         help="Open the export directory in file explorer after successful export",
     )
 
@@ -405,11 +407,11 @@ def add_encoding_arguments(parser: argparse.ArgumentParser, default_encoding: st
     encoding_group.add_argument(
         "--encoding",
         "-e",
-        help=f"Encoding to be used when reading/writing VBA files (default: {default_encoding})",
+        help=f"Encoding to be used when reading/writing VBA files (e.g., 'utf-8', 'windows-1252', default: {default_encoding})",
         default=default_encoding,
     )
     encoding_group.add_argument(
-        "--detect-encoding", "-d", action="store_true", help="Auto-detect input encoding for VBA files"
+        "--detect-encoding", "-d", action="store_true", default=None, help="Auto-detect file encoding for VBA files"
     )
 
 
@@ -422,5 +424,21 @@ def add_header_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--save-headers",
         action="store_true",
+        default=None,
         help="Save VBA component headers to separate .header files (default: False)",
+    )
+
+
+def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add metadata-related arguments to a parser.
+
+    Args:
+        parser: The argument parser to add arguments to
+    """
+    parser.add_argument(
+        "--save-metadata",
+        "-m",
+        action="store_true",
+        default=None,
+        help="Save metadata file with character encoding information (default: False)",
     )
