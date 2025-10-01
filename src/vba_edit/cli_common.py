@@ -427,6 +427,21 @@ def add_header_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Save VBA component headers to separate .header files (default: False)",
     )
+    parser.add_argument(
+        "--in-file-headers",
+        action="store_true",
+        default=None,
+        help="Include VBA headers directly in code files instead of separate .header files (default: True)",
+    )
+
+
+def validate_header_options(args: argparse.Namespace) -> None:
+    """Validate that header options are not conflicting."""
+    if getattr(args, "save_headers", False) and getattr(args, "in_file_headers", False):
+        raise argparse.ArgumentTypeError(
+            "Options --save-headers and --in-file-headers are mutually exclusive. "
+            "Choose either separate header files or embedded headers."
+        )
 
 
 def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:

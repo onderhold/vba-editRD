@@ -26,6 +26,7 @@ from vba_edit.cli_common import (
     add_header_arguments,
     add_metadata_arguments,
     add_excel_specific_arguments,
+    validate_header_options,
 )
 
 # Configure module logger
@@ -70,9 +71,6 @@ IMPORTANT:
            [!] It's early days. Use with care and backup your important macro-enabled
                MS Office documents before using them with this tool!
 
-               First tests have been very promising. Feedback appreciated via
-               github issues. 
-
            [!] This tool requires "Trust access to the VBA project object model" 
                enabled in Excel.
 """,
@@ -99,6 +97,7 @@ IMPORTANT:
     add_common_arguments(import_parser)
     add_excel_specific_arguments(import_parser)
     add_encoding_arguments(import_parser, default_encoding)
+    add_header_arguments(import_parser)
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export VBA content from Excel workbook")
@@ -160,6 +159,9 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
         encoding = None if getattr(args, "detect_encoding", False) else args.encoding
         logger.debug(f"Using encoding: {encoding or 'auto-detect'}")
 
+        # Validate header options
+        validate_header_options(args)
+
         # Create handler instance
         try:
             handler = ExcelVBAHandler(
@@ -169,6 +171,8 @@ def handle_excel_vba_command(args: argparse.Namespace) -> None:
                 verbose=getattr(args, "verbose", False),
                 save_headers=getattr(args, "save_headers", False),
                 use_rubberduck_folders=getattr(args, "rubberduck_folders", False),
+                open_folder=args.open_folder,
+                in_file_headers=getattr(args, "in_file_headers", True),
             )
         except VBAError as e:
             logger.error(f"Failed to initialize Excel VBA handler: {str(e)}")
@@ -275,9 +279,6 @@ def main() -> None:
 
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-
-        # DEBUG: show final args that the app will use
-        logger.debug(f"Final CLI args after config/placeholder resolution: {vars(args)}")
 
         # Create target directories and validate inputs early
         validate_paths(args)

@@ -23,6 +23,7 @@ from vba_edit.cli_common import (
     add_encoding_arguments,
     add_header_arguments,
     add_metadata_arguments,
+    validate_header_options,
 )
 
 
@@ -95,6 +96,7 @@ IMPORTANT:
     import_parser = subparsers.add_parser("import", help="Import VBA content into PowerPoint document")
     add_common_arguments(import_parser)
     add_encoding_arguments(import_parser, default_encoding)
+    add_header_arguments(import_parser)
 
     # Export command
     export_parser = subparsers.add_parser("export", help="Export VBA content from PowerPoint document")
@@ -153,6 +155,9 @@ def handle_powerpoint_vba_command(args: argparse.Namespace) -> None:
         encoding = None if getattr(args, "detect_encoding", False) else args.encoding
         logger.debug(f"Using encoding: {encoding or 'auto-detect'}")
 
+        # Validate header options
+        validate_header_options(args)
+
         # Create handler instance
         try:
             handler = PowerPointVBAHandler(
@@ -161,6 +166,9 @@ def handle_powerpoint_vba_command(args: argparse.Namespace) -> None:
                 encoding=encoding,
                 verbose=getattr(args, "verbose", False),
                 save_headers=getattr(args, "save_headers", False),
+                use_rubberduck_folders=args.rubberduck_folders,
+                open_folder=args.open_folder,
+                in_file_headers=getattr(args, "in_file_headers", True),
             )
         except VBAError as e:
             logger.error(f"Failed to initialize PowerPoint VBA handler: {str(e)}")
@@ -224,9 +232,6 @@ def main() -> None:
 
         # Set up logging first
         setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-
-        # DEBUG: show final args that the app will use
-        logger.debug(f"Final CLI args after config/placeholder resolution: {vars(args)}")
 
         # Create target directories and validate inputs early
         validate_paths(args)

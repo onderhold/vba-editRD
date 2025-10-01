@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- ### Security -->
 <!-- -  -->
 
+## [0.4.0-a2] - 2025-10-01
+
+### Added
+- `--in-file-headers` option for embedding VBA headers in code files
+- Better support for VBA class modules with custom attributes
+- Enhanced VB_PredeclaredId handling for class modules
+
+### Changed
+- **BREAKING**: Default behavior now uses in-file headers (`--in-file-headers=True`)
+- **BREAKING**: Rubberduck folders now enabled by default (`--rubberduck-folders=True`) 
+- Improved version control compatibility with embedded headers
+
 ## [0.3.1-rd] 2025-09-10
 
 ### Added

@@ -304,11 +304,13 @@ class VBAComponentHandler:
 
         return VBAModuleType.CLASS
 
-    def get_module_type(self, file_path: Path) -> VBAModuleType:
+    def get_module_type(self, file_path: Path, in_file_headers: bool = False, encoding: str = "utf-8") -> VBAModuleType:
         """Determine VBA module type from file extension and content.
 
         Args:
             file_path: Path to the VBA module file
+            in_file_headers: Whether headers are embedded in files
+            encoding: Character encoding for reading files
 
         Returns:
             Appropriate VBAModuleType
@@ -329,10 +331,22 @@ class VBAComponentHandler:
             return VBAModuleType.FORM
         elif suffix == ".cls":
             # For .cls files, check the header if available
-            header_file = file_path.with_suffix(".header")
-            if header_file.exists():
-                with open(header_file, "r", encoding="utf-8") as f:
-                    return self.determine_cls_type(f.read())
+            if in_file_headers:
+                # When using in-file headers, check the file content directly
+                try:
+                    with open(file_path, "r", encoding=encoding) as f:
+                        content = f.read()
+                    header, _ = self.split_vba_content(content)
+                    if header:
+                        return self.determine_cls_type(header)
+                except Exception:
+                    logger.debug(f"Could not read content from {file_path}, treating as regular class module")
+            else:
+                # Use separate header file
+                header_file = file_path.with_suffix(".header")
+                if header_file.exists():
+                    with open(header_file, "r", encoding=encoding) as f:
+                        return self.determine_cls_type(f.read())
 
             logger.debug(f"No header file found for {file_path}, treating as regular class module")
             return VBAModuleType.CLASS
@@ -428,7 +442,9 @@ class VBAComponentHandler:
 
         return "\n".join(header)
 
-    def prepare_import_content(self, name: str, module_type: VBAModuleType, header: str, code: str) -> str:
+    def prepare_import_content(
+        self, name: str, module_type: VBAModuleType, header: str, code: str, in_file_headers: bool = False
+    ) -> str:
         """Prepare content for VBA component import.
 
         Args:
@@ -436,12 +452,18 @@ class VBAComponentHandler:
             module_type: Type of the VBA module
             header: Header content (may be empty)
             code: Code content
+            in_file_headers: Whether headers are embedded in files
 
         Returns:
             Properly formatted content for import
         """
-        if not header and module_type == VBAModuleType.STANDARD:
-            header = self.create_minimal_header(name, module_type)
+        if in_file_headers:
+            # When in_file_headers is True, return only the code part for AddFromString
+            # The header handling will be done differently (via COM properties, not AddFromString)
+            return code
+        else:
+            if not header and module_type == VBAModuleType.STANDARD:
+                header = self.create_minimal_header(name, module_type)
 
         return f"{header}\n{code}\n" if header else f"{code}\n"
 
@@ -651,8 +673,9 @@ class OfficeVBAHandler(ABC):
         encoding: str = "cp1252",
         verbose: bool = False,
         save_headers: bool = False,
-        use_rubberduck_folders: bool = False,
+        use_rubberduck_folders: bool = True,
         open_folder: bool = False,
+        in_file_headers: bool = True,
     ):
         """Initialize the VBA handler."""
         try:
@@ -663,6 +686,7 @@ class OfficeVBAHandler(ABC):
             self.save_headers = save_headers
             self.use_rubberduck_folders = use_rubberduck_folders
             self.open_folder = open_folder
+            self.in_file_headers = in_file_headers
             self.app = None
             self.doc = None
             self.component_handler = VBAComponentHandler(use_rubberduck_folders)
@@ -926,52 +950,19 @@ class OfficeVBAHandler(ABC):
         """
         try:
             name = file_path.stem
-            module_type = self.component_handler.get_module_type(file_path)
+            # Pass in_file_headers flag to get_module_type
+            module_type = self.component_handler.get_module_type(
+                file_path, in_file_headers=getattr(self, "in_file_headers", False), encoding=self.encoding
+            )
 
             logger.debug(f"Processing module: {name} (Type: {module_type})")
 
-            # Read code file
-            code = self._read_code_file(file_path)
-
-            # Add Rubberduck folder annotation if enabled
-            if self.use_rubberduck_folders:
-                folder_path = self.component_handler.get_folder_from_file_path(file_path, self.vba_dir)
-                if folder_path:
-                    code = self.component_handler.add_rubberduck_folder(code, folder_path)
-                    logger.debug(f"Added @Folder annotation: {folder_path}")
-
-            # Handle based on module type
-            if module_type == VBAModuleType.DOCUMENT:
-                logger.debug(f"Updating document module: {name}")
-                self._update_document_module(name, code, components)
-                return
-
-            try:
-                # Try to get existing component
-                component = components(name)
-
-                if self._should_force_import(module_type):
-                    # Remove and reimport if required
-                    logger.debug(f"Forcing full import for: {name}")
-                    components.Remove(component)
-                    self._import_new_module(name, code, module_type, components)
-                else:
-                    # Update existing module content in-place
-                    logger.debug(f"Updating existing component: {name}")
-                    self._update_module_content(component, code)
-
-            except Exception:
-                # Component doesn't exist, create new
-                logger.debug(f"Creating new module: {name}")
-                # For new modules, we need header information
-                header = self._read_header_file(file_path)
-                if not header and module_type in [VBAModuleType.CLASS, VBAModuleType.FORM]:
-                    header = self.component_handler.create_minimal_header(name, module_type)
-                    logger.debug(f"Created minimal header for new module: {name}")
-
-                # Prepare content for new module
-                content = self.component_handler.prepare_import_content(name, module_type, header, code)
-                self._import_new_module(name, content, module_type, components)
+            # For in-file headers, we need different logic
+            if getattr(self, "in_file_headers", False):
+                self._import_with_in_file_headers(file_path, components, module_type)
+            else:
+                # Existing logic for separate header files
+                self._import_with_separate_headers(file_path, components, module_type)
 
             # Handle any form binaries if needed
             if module_type == VBAModuleType.FORM:
@@ -987,6 +978,136 @@ class OfficeVBAHandler(ABC):
             logger.error(f"Failed to handle {file_path.name}: {str(e)}")
             raise VBAError(f"Failed to handle {file_path.name}") from e
 
+    def _import_with_in_file_headers(self, file_path: Path, components: Any, module_type: VBAModuleType) -> None:
+        """Import VBA component when headers are embedded in files."""
+        name = file_path.stem
+
+        # Read the complete file content
+        with open(file_path, "r", encoding=self.encoding) as f:
+            full_content = f.read().strip()
+
+        # Split into header and code
+        header, code = self.component_handler.split_vba_content(full_content)
+
+        # Add Rubberduck folder annotation if enabled
+        if self.use_rubberduck_folders:
+            folder_path = self.component_handler.get_folder_from_file_path(file_path, self.vba_dir)
+            if folder_path:
+                code = self.component_handler.add_rubberduck_folder(code, folder_path)
+
+        # Handle based on module type
+        if module_type == VBAModuleType.DOCUMENT:
+            self._update_document_module(name, code, components)
+            return
+
+        try:
+            # Try to get existing component
+            component = components(name)
+
+            # For UserForms and Class modules with headers, always use full import via temporary file
+            if module_type == VBAModuleType.FORM or (module_type == VBAModuleType.CLASS and header):
+                logger.debug(f"Using full import for {module_type.name.lower()} with headers: {name}")
+                components.Remove(component)
+                self._import_via_temp_file(name, full_content, components)
+            else:
+                # For standard modules or class modules without headers, just update content
+                logger.debug(f"Updating existing component: {name}")
+                self._update_module_content(component, code)
+
+        except Exception:
+            # Component doesn't exist, create new
+            if module_type == VBAModuleType.FORM or (module_type == VBAModuleType.CLASS and header):
+                logger.debug(f"Creating new {module_type.name.lower()} with headers via import: {name}")
+                self._import_via_temp_file(name, full_content, components)
+            else:
+                logger.debug(f"Creating new component: {name}")
+                self._create_new_component(name, code, module_type, components)
+
+    def _import_via_temp_file(self, name: str, full_content: str, components: Any) -> None:
+        """Import UserForm or Class module with headers using VBA's Import method.
+
+        This method handles both UserForms and Class modules that have header attributes
+        that need to be preserved during import.
+        """
+        temp_file = self.vba_dir / f"{name}.tmp"
+        try:
+            # Write complete content to temp file
+            with open(temp_file, "w", encoding=self.encoding) as f:
+                f.write(full_content)
+
+            # Import the complete module using VBA's built-in import
+            # This preserves all header attributes including VB_PredeclaredId
+            components.Import(str(temp_file))
+
+            logger.info(f"Imported module with embedded headers via temporary file: {name}")
+
+        finally:
+            # Clean up temp file
+            if temp_file.exists():
+                temp_file.unlink()
+
+    def _create_new_component(self, name: str, code: str, module_type: VBAModuleType, components: Any) -> None:
+        """Create a new VBA component with just the code portion."""
+        if module_type == VBAModuleType.CLASS:
+            component = components.Add(VBATypes.VBEXT_CT_CLASSMODULE)
+        elif module_type == VBAModuleType.FORM:
+            component = components.Add(VBATypes.VBEXT_CT_MSFORM)
+        else:
+            component = components.Add(VBATypes.VBEXT_CT_STDMODULE)
+
+        component.Name = name
+
+        # Add only the code portion - headers are auto-generated
+        if code.strip():
+            component.CodeModule.AddFromString(code)
+
+    def _import_with_separate_headers(self, file_path: Path, components: Any, module_type: VBAModuleType) -> None:
+        """Import VBA component using separate header files (existing logic)."""
+        name = file_path.stem
+
+        # Read code file
+        code = self._read_code_file(file_path)
+
+        # Add Rubberduck folder annotation if enabled
+        if self.use_rubberduck_folders:
+            folder_path = self.component_handler.get_folder_from_file_path(file_path, self.vba_dir)
+            if folder_path:
+                code = self.component_handler.add_rubberduck_folder(code, folder_path)
+                logger.debug(f"Added @Folder annotation: {folder_path}")
+
+        # Handle based on module type
+        if module_type == VBAModuleType.DOCUMENT:
+            logger.debug(f"Updating document module: {name}")
+            self._update_document_module(name, code, components)
+            return
+
+        try:
+            # Try to get existing component
+            component = components(name)
+
+            if self._should_force_import(module_type):
+                # Remove and reimport if required
+                logger.debug(f"Forcing full import for: {name}")
+                components.Remove(component)
+                self._import_new_module(name, code, module_type, components)
+            else:
+                # Update existing module content in-place
+                logger.debug(f"Updating existing component: {name}")
+                self._update_module_content(component, code)
+
+        except Exception:
+            # Component doesn't exist, create new
+            logger.debug(f"Creating new module: {name}")
+            # For new modules, we need header information
+            header = self._read_header_file(file_path)
+            if not header and module_type in [VBAModuleType.CLASS, VBAModuleType.FORM]:
+                header = self.component_handler.create_minimal_header(name, module_type)
+                logger.debug(f"Created minimal header for new module: {name}")
+
+            # Prepare content for new module
+            content = self.component_handler.prepare_import_content(name, module_type, header, code)
+            self._import_new_module(name, content, module_type, components)
+
     def _should_force_import(self, module_type: VBAModuleType) -> bool:
         """Determine if a module type requires full import instead of content update.
 
@@ -998,10 +1119,12 @@ class OfficeVBAHandler(ABC):
         Returns:
             bool: True if module should be removed and reimported
         """
-        # By default, only force import for forms
-        return module_type == VBAModuleType.FORM
+        # Force import for forms (always) and class modules (when they have headers)
+        return module_type in [VBAModuleType.FORM, VBAModuleType.CLASS]
 
-    def _import_new_module(self, name: str, content: str, module_type: VBAModuleType, components: Any) -> None:
+    def _import_new_module(
+        self, name: str, content: str, module_type: VBAModuleType, components: Any, in_file_headers: bool = True
+    ) -> None:
         """Create and import a new module.
 
         Args:
@@ -1009,6 +1132,7 @@ class OfficeVBAHandler(ABC):
             content: Module content
             module_type: Type of the VBA module
             components: VBA components collection
+            in_file_headers: Whether content includes embedded headers
         """
         # Create appropriate module type
         if module_type == VBAModuleType.CLASS:
@@ -1019,7 +1143,48 @@ class OfficeVBAHandler(ABC):
             component = components.Add(VBATypes.VBEXT_CT_STDMODULE)
 
         component.Name = name
-        self._update_module_content(component, content)
+
+        if in_file_headers:
+            # Split the content into header and code
+            header, code = self.component_handler.split_vba_content(content)
+
+            # Set header attributes via COM properties (if any special handling needed)
+            self._apply_header_attributes(component, header)
+
+            # Add only the code portion
+            if code.strip():
+                component.CodeModule.AddFromString(code)
+        else:
+            self._update_module_content(component, content)
+
+    def _apply_header_attributes(self, component: Any, header: str) -> None:
+        """Apply header attributes to a VBA component via COM properties.
+
+        Args:
+            component: VBA component to configure
+            header: Header content with attributes
+        """
+        if not header:
+            return
+
+        # For most modules, the basic attributes are automatically handled
+        # when you create the component and set its name
+
+        # Special handling for specific attributes if needed
+        lines = header.splitlines()
+        for line in lines:
+            line = line.strip()
+            if line.startswith("Attribute VB_"):
+                # Most VB_ attributes are read-only and set automatically
+                # Only a few can be modified via COM
+                if "VB_Description" in line:
+                    # Extract and set description if supported
+                    match = re.search(r'Attribute VB_Description = "([^"]*)"', line)
+                    if match:
+                        try:
+                            component.Description = match.group(1)
+                        except Exception:
+                            pass  # Not all components support description
 
     def _update_module_content(self, component: Any, content: str) -> None:
         """Update the content of an existing module.
@@ -1083,16 +1248,42 @@ class OfficeVBAHandler(ABC):
 
     def _read_header_file(self, code_file: Path) -> str:
         """Read the header file if it exists."""
-        header_file = code_file.with_suffix(".header")
-        if header_file.exists():
-            with open(header_file, "r", encoding="utf-8") as f:
-                return f.read().strip()
-        return ""
+        if self.in_file_headers:
+            # Extract header from the code file itself
+            try:
+                with open(code_file, "r", encoding=self.encoding) as f:
+                    content = f.read().strip()
+                header, _ = self.component_handler.split_vba_content(content)
+                return header
+            except Exception as e:
+                logger.debug(f"Could not read header from code file {code_file}: {e}")
+                return ""
+        else:
+            # Use existing logic for separate header files
+            header_file = code_file.with_suffix(".header")
+            if header_file.exists():
+                try:
+                    with open(header_file, "r", encoding=self.encoding) as f:
+                        return f.read().strip()
+                except Exception as e:
+                    logger.debug(f"Could not read header file {header_file}: {e}")
+            return ""
 
     def _read_code_file(self, code_file: Path) -> str:
         """Read the code file."""
-        with open(code_file, "r", encoding="utf-8") as f:
-            return f.read().strip()
+        try:
+            with open(code_file, "r", encoding=self.encoding) as f:
+                content = f.read().strip()
+
+            if self.in_file_headers:
+                # Split content to extract only the code part
+                _, code = self.component_handler.split_vba_content(content)
+                return code
+            else:
+                return content
+        except Exception as e:
+            logger.error(f"Failed to read code file {code_file}: {str(e)}")
+            raise VBAError(f"Failed to read VBA code file: {code_file}") from e
 
     def _write_component_files(self, name: str, header: str, code: str, info: Dict[str, Any], directory: Path) -> None:
         """Write component files with proper encoding.
@@ -1104,18 +1295,26 @@ class OfficeVBAHandler(ABC):
             info: Component information dictionary
             directory: Target directory
         """
-        # Save header if enabled and header content exists
-        if self.save_headers and header:
-            header_file = directory / f"{name}.header"
-            with open(header_file, "w", encoding="utf-8") as f:
-                f.write(header + "\n")
-            logger.debug(f"Saved header file: {header_file}")
+        if self.in_file_headers and header:
+            # Combine header and code in single file
+            combined_content = f"{header}\n{code}"
+            code_file = directory / f"{name}{info['extension']}"
+            with open(code_file, "w", encoding=self.encoding) as f:
+                f.write(combined_content + "\n")
+            logger.debug(f"Saved code file with embedded header: {code_file}")
+        else:
+            # Save header if enabled and header content exists
+            if self.save_headers and header:
+                header_file = directory / f"{name}.header"
+                with open(header_file, "w", encoding=self.encoding) as f:
+                    f.write(header + "\n")
+                logger.debug(f"Saved header file: {header_file}")
 
-        # Always save code file
-        code_file = directory / f"{name}{info['extension']}"
-        with open(code_file, "w", encoding="utf-8") as f:
-            f.write(code + "\n")
-        logger.debug(f"Saved code file: {code_file}")
+            # Save code file
+            code_file = directory / f"{name}{info['extension']}"
+            with open(code_file, "w", encoding=self.encoding) as f:
+                f.write(code + "\n")
+            logger.debug(f"Saved code file: {code_file}")
 
     def watch_changes(self) -> None:
         """Watch for changes in VBA files and update the document."""
@@ -1158,7 +1357,7 @@ class OfficeVBAHandler(ABC):
                     if vba_changes:
                         logger.debug(f"Watchfiles detected VBA changes: {vba_changes}")
 
-                    for change_type, path in changes:
+                    for change_type, path in vba_changes:
                         try:
                             path = Path(path)
                             if change_type == Change.deleted:
@@ -1481,6 +1680,9 @@ class AccessVBAHandler(OfficeVBAHandler):
         encoding: str = "cp1252",
         verbose: bool = False,
         save_headers: bool = False,
+        use_rubberduck_folders: bool = False,
+        open_folder: bool = False,
+        in_file_headers: bool = False,
     ):
         """Initialize the Access VBA handler.
 
@@ -1490,6 +1692,9 @@ class AccessVBAHandler(OfficeVBAHandler):
             encoding: Character encoding for VBA files (default: cp1252)
             verbose: Enable verbose logging
             save_headers: Whether to save VBA component headers to separate files
+            use_rubberduck_folders: Whether to use Rubberduck folder structure
+            open_folder: Whether to open the VBA directory after export
+            in_file_headers: Whether to include headers directly in code files
         """
         try:
             # Let parent handle path resolution
@@ -1499,6 +1704,9 @@ class AccessVBAHandler(OfficeVBAHandler):
                 encoding=encoding,
                 verbose=verbose,
                 save_headers=save_headers,
+                use_rubberduck_folders=use_rubberduck_folders,
+                open_folder=open_folder,
+                in_file_headers=in_file_headers,
             )
 
             # Handle Access-specific initialization
