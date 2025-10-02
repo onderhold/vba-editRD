@@ -1,117 +1,13 @@
+"""Access VBA CLI module."""
+
 import argparse
 import logging
 import sys
-from pathlib import Path
 
-from vba_edit import __name__ as package_name
-from vba_edit import __version__ as package_version
-from vba_edit.exceptions import (
-    ApplicationError,
-    DocumentClosedError,
-    DocumentNotFoundError,
-    PathError,
-    RPCError,
-    VBAAccessError,
-    VBAError,
-)
-from vba_edit.office_vba import AccessVBAHandler
-from vba_edit.path_utils import get_document_paths
-from vba_edit.utils import get_active_office_document, get_windows_ansi_codepage, setup_logging
-from vba_edit.cli_common import (
-    add_common_arguments,
-    add_encoding_arguments,
-    add_header_arguments,
-    process_config_file,
-    add_metadata_arguments,
-    validate_header_options,
-)
+from vba_edit.exceptions import VBAError
+from vba_edit.office_cli import create_office_main
 
-
-# Configure module logger
 logger = logging.getLogger(__name__)
-
-
-def create_cli_parser() -> argparse.ArgumentParser:
-    """Create the command-line interface parser."""
-    entry_point_name = "access-vba"
-    package_name_formatted = package_name.replace("_", "-")
-
-    # Get system default encoding
-    default_encoding = get_windows_ansi_codepage() or "cp1252"
-
-    parser = argparse.ArgumentParser(
-        prog=entry_point_name,
-        description=f"""
-{package_name_formatted} v{package_version} ({entry_point_name})
-
-A command-line tool suite for managing VBA content in MS Access databases.
-
-ACCESS-VBA allows you to edit, import, and export VBA content from Access databases.
-If no file is specified, the tool will attempt to use the currently active Access database.
-If multiple databases are open, you must specify the target database using --file.
-Only standard modules (*.bas) and class modules (*.cls) are supported.
-
-Commands:
-    edit    Edit VBA content in MS Access database
-    import  Import VBA content into MS Access database
-    export  Export VBA content from MS Access database
-    check   Check if MS Access VBA project object model is accessible 
-
-Examples:
-    access-vba edit   <--- uses active Access database and current directory for exported 
-                           VBA files (*.bas/*.cls) & syncs changes back to the 
-                           database on save
-
-    access-vba import -f "C:/path/to/database.accdb" --vba-directory "path/to/vba/files"
-    access-vba export --file "C:/path/to/database.accdb" --encoding cp850 --save-metadata
-
-IMPORTANT: 
-           [!] It's early days. Use with care and backup your important macro-enabled
-               MS Access databases before using them with this tool!
-
-           [!] This tool requires "Trust access to the VBA project object model"
-           
-           [!] The database will remain open after operations complete - closing
-               should be done manually through Access.
-""",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-
-    # Add --version argument to the main parser
-    parser.add_argument(
-        "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
-    )
-    add_common_arguments(parser)
-
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # Edit command
-    edit_parser = subparsers.add_parser("edit", help="Edit VBA content in Access database")
-    add_common_arguments(edit_parser)
-    add_encoding_arguments(edit_parser, default_encoding)
-    add_header_arguments(edit_parser)
-
-    # Import command
-    import_parser = subparsers.add_parser("import", help="Import VBA content into Access database")
-    add_common_arguments(import_parser)
-    add_encoding_arguments(import_parser, default_encoding)
-    add_header_arguments(import_parser)
-
-    # Export command
-    export_parser = subparsers.add_parser("export", help="Export VBA content from Access database")
-    add_common_arguments(export_parser)
-    add_encoding_arguments(export_parser, default_encoding)
-    add_header_arguments(export_parser)
-    add_metadata_arguments(export_parser)
-
-    # Check command
-    check_parser = subparsers.add_parser(
-        "check",
-        help="Check if the MS Access VBA project object model' is accessible",
-    )
-    add_common_arguments(check_parser)
-
-    return parser
 
 
 def check_multiple_databases(file_path: str = None) -> None:
@@ -168,151 +64,17 @@ def check_multiple_databases(file_path: str = None) -> None:
         return
 
 
-def handle_access_vba_command(args: argparse.Namespace) -> None:
-    """Handle the access-vba command execution."""
+def access_pre_command_hook(args: argparse.Namespace) -> None:
+    """Access-specific pre-command processing."""
     try:
-        # Initialize logging
-        setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-        logger.debug(f"Starting access-vba command: {args.command}")
-        logger.debug(f"Command arguments: {vars(args)}")
-
-        # Check for multiple open databases and handle appropriately
-        try:
-            check_multiple_databases(args.file)
-        except VBAError as e:
-            logger.error(str(e))
-            sys.exit(1)
-
-        # Get document path and active database path
-        active_doc = None
-        if not args.file:
-            try:
-                active_doc = get_active_office_document("access")
-            except ApplicationError:
-                pass
-
-        try:
-            doc_path, vba_dir = get_document_paths(args.file, active_doc, args.vba_directory)
-            logger.info(f"Using database: {doc_path}")
-            logger.debug(f"Using VBA directory: {vba_dir}")
-        except (DocumentNotFoundError, PathError) as e:
-            logger.error(f"Failed to resolve paths: {str(e)}")
-            sys.exit(1)
-
-        # Determine encoding
-        encoding = None if getattr(args, "detect_encoding", False) else args.encoding
-        logger.debug(f"Using encoding: {encoding or 'auto-detect'}")
-
-        # Validate header options
-        validate_header_options(args)
-
-        # Create handler instance
-        try:
-            handler = AccessVBAHandler(
-                doc_path=str(doc_path),
-                vba_dir=str(vba_dir),
-                encoding=encoding,
-                verbose=getattr(args, "verbose", False),
-                save_headers=getattr(args, "save_headers", False),
-                use_rubberduck_folders=args.rubberduck_folders,
-                open_folder=args.open_folder,
-                in_file_headers=getattr(args, "in_file_headers", True),
-            )
-        except VBAError as e:
-            logger.error(f"Failed to initialize Access VBA handler: {str(e)}")
-            sys.exit(1)
-
-        # Execute requested command
-        logger.info(f"Executing command: {args.command}")
-        try:
-            if args.command == "edit":
-                print("NOTE: Deleting a VBA module file will also delete it in the VBA editor!")
-                print("NOTE: The database will remain open - close it manually when finished.")
-                handler.export_vba(overwrite=False)
-                try:
-                    handler.watch_changes()
-                except (DocumentClosedError, RPCError) as e:
-                    logger.error(str(e))
-                    logger.info("Edit session terminated. Please restart Access and the tool to continue editing.")
-                    sys.exit(1)
-            elif args.command == "import":
-                handler.import_vba()
-            elif args.command == "export":
-                handler.export_vba(save_metadata=getattr(args, "save_metadata", False), overwrite=True)
-        except (DocumentClosedError, RPCError) as e:
-            logger.error(str(e))
-            sys.exit(1)
-        except VBAAccessError as e:
-            logger.error(str(e))
-            logger.error("Please check Access Trust Center Settings and try again.")
-            sys.exit(1)
-        except VBAError as e:
-            logger.error(f"VBA operation failed: {str(e)}")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}")
-            if getattr(args, "verbose", False):
-                logger.exception("Detailed error information:")
-            sys.exit(1)
-
-    except KeyboardInterrupt:
-        logger.info("\nOperation interrupted by user")
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"Critical error: {str(e)}")
-        if getattr(args, "verbose", False):
-            logger.exception("Detailed error information:")
-        sys.exit(1)
-    finally:
-        logger.debug("Command execution completed")
-
-
-def validate_paths(args: argparse.Namespace) -> None:
-    """Validate file and directory paths from command line arguments."""
-    if args.file and not Path(args.file).exists():
-        raise FileNotFoundError(f"Database not found: {args.file}")
-
-    if args.vba_directory:
-        vba_dir = Path(args.vba_directory)
-        if not vba_dir.exists():
-            logger.info(f"Creating VBA directory: {vba_dir}")
-            vba_dir.mkdir(parents=True, exist_ok=True)
-
-
-def main() -> None:
-    """Main entry point for the access-vba CLI."""
-    try:
-        parser = create_cli_parser()
-        args = parser.parse_args()
-
-        # Process configuration file BEFORE setting up logging
-        args = process_config_file(args)
-
-        # Set up logging first
-        setup_logging(verbose=getattr(args, "verbose", False), logfile=getattr(args, "logfile", None))
-
-        # Create target directories and validate inputs early
-        validate_paths(args)
-
-        # Run 'check' command (Check if VBA project model is accessible )
-        if args.command == "check":
-            from vba_edit.utils import check_vba_trust_access
-
-            try:
-                if args.subcommand == "all":
-                    check_vba_trust_access()  # Check all supported Office applications
-                else:
-                    check_vba_trust_access("access")  # Check MS Access only
-            except Exception as e:
-                logger.error(f"Failed to check Trust Access to VBA project object model: {str(e)}")
-            sys.exit(0)
-        else:
-            handle_access_vba_command(args)
-
-    except Exception as e:
-        print(f"Critical error: {str(e)}", file=sys.stderr)
+        check_multiple_databases(args.file)
+    except VBAError as e:
+        logger.error(str(e))
         sys.exit(1)
 
+
+# Create the main function for Access
+main = create_office_main("access")
 
 if __name__ == "__main__":
     main()

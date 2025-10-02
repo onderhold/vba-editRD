@@ -1,11 +1,12 @@
 """Basic CLI functionality tests."""
 
 import pytest
-from .helpers import CLITester, temp_office_doc
+from .helpers import CLITester
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS
 from vba_edit.cli_common import (
     CONFIG_SECTION_GENERAL,
     CONFIG_KEY_VERBOSE,
+    get_office_config,  # Import the centralized config function
 )
 
 
@@ -37,7 +38,12 @@ class TestCLIBasic:
         """Test handling of missing file."""
         cli = CLITester(f"{vba_app}-vba")
         extension = OFFICE_MACRO_EXTENSIONS[vba_app]
-        cli.assert_error(["import", "-f", f"nonexistent{extension}"], "File not found")
+
+        # Use centralized config to get the correct document type
+        config = get_office_config(vba_app)
+        expected_error = f"{config['document_type'].title()} not found"
+
+        cli.assert_error(["import", "-f", f"nonexistent{extension}"], expected_error)
 
     @pytest.mark.office
     def test_rubberduck_folders_option(self, vba_app):

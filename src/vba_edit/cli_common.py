@@ -49,6 +49,46 @@ CONFIG_KEY_INVISIBLE_MODE = "invisible_mode"
 CONFIG_KEY_MODE = "mode"
 CONFIG_KEY_OPEN_FOLDER = "open_folder"
 
+# Office application CLI configurations
+OFFICE_CLI_CONFIGS = {
+    "excel": {
+        "entry_point": "excel-vba",
+        "app_name": "Excel",
+        "document_type": "workbook",
+        "file_extensions": "*.bas/*.cls/*.frm",
+        "example_file": "workbook.xlsm",
+    },
+    "word": {
+        "entry_point": "word-vba",
+        "app_name": "Word",
+        "document_type": "document",
+        "file_extensions": "*.bas/*.cls/*.frm",
+        "example_file": "document.docx",
+    },
+    "access": {
+        "entry_point": "access-vba",
+        "app_name": "Access",
+        "document_type": "database",
+        "file_extensions": "*.bas/*.cls",  # Access only supports modules and class modules
+        "example_file": "database.accdb",
+    },
+    "powerpoint": {
+        "entry_point": "powerpoint-vba",
+        "app_name": "PowerPoint",
+        "document_type": "presentation",
+        "file_extensions": "*.bas/*.cls/*.frm",
+        "example_file": "presentation.pptx",
+    },
+}
+
+# Centralized help strings
+CLI_HELP_STRINGS = {
+    "edit": "Edit VBA content in {app_name} {document_type}",
+    "import": "Import VBA content into {app_name} {document_type}",
+    "export": "Export VBA content from {app_name} {document_type}",
+    "check": "Check if 'Trust Access to the MS {app_name} VBA project object model' is enabled",
+}
+
 
 def resolve_placeholders_in_value(value: str, placeholders: Dict[str, str]) -> str:
     """Resolve placeholders in a single string value.
@@ -391,6 +431,11 @@ def add_excel_specific_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--xlwings", "-x", action="store_true", help="Use wrapper for xlwings vba edit|import|export commands"
     )
+    parser.add_argument(
+        "--pq-directory",
+        help="Directory to export PowerQuery M files to (Excel only). "
+        "Supports placeholders: {general.file.name}, {general.file.fullname}, {general.file.path}, {vbaproject}",
+    )
 
 
 def add_encoding_arguments(parser: argparse.ArgumentParser, default_encoding: str = None) -> None:
@@ -457,3 +502,101 @@ def add_metadata_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Save metadata file with character encoding information (default: False)",
     )
+
+
+def get_office_config(office_app: str) -> Dict[str, str]:
+    """Get configuration for specified Office application.
+
+    Args:
+        office_app: Office application name (excel, word, access, powerpoint)
+
+    Returns:
+        Configuration dictionary
+
+    Raises:
+        KeyError: If office_app is not supported
+    """
+    if office_app not in OFFICE_CLI_CONFIGS:
+        raise KeyError(f"Unsupported Office application: {office_app}")
+    return OFFICE_CLI_CONFIGS[office_app]
+
+
+def create_office_cli_description(office_app: str, package_name_formatted: str, package_version: str) -> str:
+    """Create CLI description for specified Office application.
+
+    Args:
+        office_app: Office application name (excel, word, access, powerpoint)
+        package_name_formatted: Package name for display (e.g., "vba-edit")
+        package_version: Version string
+
+    Returns:
+        Formatted description string
+    """
+    config = get_office_config(office_app)
+    return create_cli_description(
+        entry_point_name=config["entry_point"],
+        package_name_formatted=package_name_formatted,
+        package_version=package_version,
+        app_name=config["app_name"],
+        document_type=config["document_type"],
+        file_extensions=config["file_extensions"],
+        example_file=config["example_file"],
+    )
+
+
+def get_help_string(command: str, office_app: str) -> str:
+    """Get help string for a command and Office application.
+
+    Args:
+        command: Command name (edit, import, export, check)
+        office_app: Office application name
+
+    Returns:
+        Formatted help string
+    """
+    config = get_office_config(office_app)
+    template = CLI_HELP_STRINGS.get(command, f"{command.title()} VBA content")
+    return template.format(**config)
+
+
+def create_cli_description(
+    entry_point_name: str,
+    package_name_formatted: str,
+    package_version: str,
+    app_name: str,
+    document_type: str,
+    file_extensions: str,
+    example_file: str,
+) -> str:
+    """Create standardized CLI description for Office VBA tools."""
+    return f"""
+{package_name_formatted} v{package_version} ({entry_point_name})
+
+A command-line tool suite for managing VBA content in MS Office documents.
+
+{entry_point_name.upper()} allows you to edit, import, and export VBA content from {app_name} {document_type}s.
+If no file is specified, the tool will attempt to use the currently active {app_name} {document_type}.
+
+Commands:
+    edit    Edit VBA content in {app_name} {document_type}
+    import  Import VBA content into {app_name} {document_type}
+    export  Export VBA content from {app_name} {document_type}
+    check   Check if 'Trust access to the VBA project object model' is enabled in MS {app_name}
+
+Examples:
+    {entry_point_name} edit   <--- uses active {app_name} {document_type} and current directory for exported 
+                         VBA files ({file_extensions}) & syncs changes back to the 
+                         active {app_name} {document_type} on save
+
+    {entry_point_name} import -f "C:/path/to/{example_file}" --vba-directory "path/to/vba/files"
+    {entry_point_name} export --file "C:/path/to/{example_file}" --encoding cp850 --save-metadata
+    {entry_point_name} edit --vba-directory "path/to/vba/files" --logfile "path/to/logfile" --verbose
+    {entry_point_name} edit --save-headers
+
+IMPORTANT: 
+           [!] It's early days. Use with care and backup your important macro-enabled
+               MS Office documents before using them with this tool!
+
+           [!] This tool requires "Trust access to the VBA project object model" 
+               enabled in {app_name}.
+"""
