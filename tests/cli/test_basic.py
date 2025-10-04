@@ -59,7 +59,7 @@ class TestCLIBasic:
         result = cli.run(["export", "--rubberduck-folders", "--help"])
         assert result.returncode == 0
 
-        """Test that the CLI parser includes Rubberduck folders option."""
+        # Test that the CLI parser includes Rubberduck folders option.
         cli = OfficeVBACLI(vba_app)
         parser = cli.create_cli_parser()
 

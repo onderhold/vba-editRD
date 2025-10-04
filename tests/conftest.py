@@ -151,10 +151,8 @@ def _check_vba_trust_access(config):
         # Store the failed apps in pytest config for later use
         config._vba_trust_failed_apps = failed_apps
 
-        # Use pytest.exit instead of sys.exit for cleaner pytest integration
-        import pytest
-
-        pytest.exit("VBA trust access configuration required", returncode=1)
+        # Mark all tests to be skipped if VBA trust access is not available
+        config._vba_trust_skip_all = True
 
     else:
         print("✅ ALL OFFICE APPLICATIONS CONFIGURED CORRECTLY!")
@@ -187,7 +185,14 @@ def pytest_generate_tests(metafunc):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip tests based on selected apps."""
+    """Skip tests based on selected apps and VBA trust access."""
+    # If VBA trust access is not available, skip all tests
+    if getattr(config, "_vba_trust_skip_all", False):
+        skip_reason = "VBA trust access configuration required"
+        for item in items:
+            item.add_marker(pytest.mark.skip(reason=skip_reason))
+        return
+
     apps_option = config.getoption("--apps")
     if apps_option.lower() == "all":
         return  # Don't skip anything

@@ -545,16 +545,19 @@ def test_watch_changes_with_threading(vba_app, tmp_path, request):
     # Update the handler to use the pytest temporary directory
     handler.vba_dir = vba_dir
 
-    # Print file path information
-    print("\n=== File Path Information ===")
-    print(f"Test file name: {test_module.name}")
-    print(f"Test file path: {test_module}")
-    print(f"Absolute path: {test_module.absolute()}")
-    print(f"Parent directory: {test_module.parent}")
-    print(f"File exists: {test_module.exists()}")
-    print(f"VBA directory: {tmp_path}")
-    print(f"Handler VBA dir: {handler.vba_dir}")
-    print("================================\n")
+    # Log file path information for debugging
+    import logging
+
+    logger = logging.getLogger("test_office_vba")
+    logger.debug("=== File Path Information ===")
+    logger.debug(f"Test file name: {test_module.name}")
+    logger.debug(f"Test file path: {test_module}")
+    logger.debug(f"Absolute path: {test_module.absolute()}")
+    logger.debug(f"Parent directory: {test_module.parent}")
+    logger.debug(f"File exists: {test_module.exists()}")
+    logger.debug(f"VBA directory: {tmp_path}")
+    logger.debug(f"Handler VBA dir: {handler.vba_dir}")
+    logger.debug("================================")
 
     # Track when changes are detected and file content verification
     changes_detected = threading.Event()
@@ -584,11 +587,11 @@ def test_watch_changes_with_threading(vba_app, tmp_path, request):
         expected_addition = "' Added comment"
         file_content_matches = expected_addition in current_content
 
-        print("File content verification:")
-        print(f"Original content: {repr(original_content)}")
-        print(f"Current content: {repr(current_content)}")
-        print(f"Looking for: {repr(expected_addition)}")
-        print(f"Content matches: {file_content_matches}")
+        logger.debug("File content verification:")
+        logger.debug(f"Original content: {repr(original_content)}")
+        logger.debug(f"Current content: {repr(current_content)}")
+        logger.debug(f"Looking for: {repr(expected_addition)}")
+        logger.debug(f"Content matches: {file_content_matches}")
 
         content_verified.set()  # Signal that content verification is done
 
@@ -599,18 +602,18 @@ def test_watch_changes_with_threading(vba_app, tmp_path, request):
         # Modify the test file
         modified_content = test_module.read_text() + "\n' Added comment"
         test_module.write_text(modified_content)
-        print(f"File modified. New content: {repr(modified_content)}")
+        logger.debug(f"File modified. New content: {repr(modified_content)}")
 
         # Wait for change detection with shorter timeout than watcher
         if changes_detected.wait(timeout=3):
-            print("Changes detected! Waiting a bit more for processing...")
+            logger.debug("Changes detected! Waiting a bit more for processing...")
             time.sleep(0.5)  # Give watcher time to process the change
 
             # Signal the watcher to stop by mocking document closure
             handler.is_document_open = Mock(return_value=False)
-            print("Signaled watcher to stop")
+            logger.debug("Signaled watcher to stop")
         else:
-            print("Timeout waiting for change detection - forcing stop")
+            logger.debug("Timeout waiting for change detection - forcing stop")
             # Timeout - force stop the watcher
             handler.is_document_open = Mock(return_value=False)
 
@@ -632,7 +635,7 @@ def test_watch_changes_with_threading(vba_app, tmp_path, request):
 
     # Verify the test results
     if watch_error and not isinstance(watch_error, (DocumentClosedError, KeyboardInterrupt)):
-        print(f"Unexpected watch error: {watch_error}")
+        logger.error(f"Unexpected watch error: {watch_error}")
         raise watch_error
 
     # Verify that changes were actually detected
@@ -648,7 +651,7 @@ def test_watch_changes_with_threading(vba_app, tmp_path, request):
     final_content = test_module.read_text()
     assert "' Added comment" in final_content, f"File content verification failed. Content: {repr(final_content)}"
 
-    print("✓ All verifications passed!")
+    logger.info("✓ All verifications passed!")
 
 
 @pytest.mark.office
