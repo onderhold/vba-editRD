@@ -5,7 +5,7 @@
 - [ ] Run `python build_release.py --update-version --check-only` 
 - [ ] Update CHANGELOG.md
 - [ ] Commit version changes
-- [ ] Run full test suite: `pytest tests/ -v --check-vba-trust --cov-report=html`
+- [ ] Run full test suite: `pytest tests/ -v --skip-vba-check --cov-report=html`
 
 ## Build Release
 - [ ] Run `python build_release.py --create-tag` (builds AND creates tag)
