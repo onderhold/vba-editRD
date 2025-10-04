@@ -3,6 +3,7 @@
 import pytest
 from .helpers import CLITester
 from vba_edit.office_vba import OFFICE_MACRO_EXTENSIONS
+from vba_edit.office_cli import OfficeVBACLI
 from vba_edit.cli_common import (
     CONFIG_SECTION_GENERAL,
     CONFIG_KEY_VERBOSE,
@@ -57,6 +58,22 @@ class TestCLIBasic:
         # Test that the option is accepted
         result = cli.run(["export", "--rubberduck-folders", "--help"])
         assert result.returncode == 0
+
+        """Test that the CLI parser includes Rubberduck folders option."""
+        cli = OfficeVBACLI(vba_app)
+        parser = cli.create_cli_parser()
+
+        # Test edit command with rubberduck folders
+        args = parser.parse_args(["edit", "--rubberduck-folders"])
+        assert args.rubberduck_folders is True
+
+        # Test export command with rubberduck folders
+        args = parser.parse_args(["export", "--rubberduck-folders"])
+        assert args.rubberduck_folders is True
+
+        # Test import command with rubberduck folders
+        args = parser.parse_args(["import", "--rubberduck-folders"])
+        assert args.rubberduck_folders is True
 
     @pytest.mark.office
     def test_config_option_available(self, vba_app):

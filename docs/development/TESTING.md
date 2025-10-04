@@ -1,6 +1,6 @@
-onderhold: how can I set up automated testing in this project? Are there alredy some provisions in place? (I am new to this code and Python in general.)
+**onderhold**: how can I set up automated testing in this project? Are there alredy some provisions in place? (I am new to this code and Python in general.)
 
-GitHub Copilot: Great question! Looking at your project, there are already excellent testing provisions in place. Let me walk you through what's already set up and how to use it.
+**GitHub Copilot**: Great question! Looking at your project, there are already excellent testing provisions in place. Let me walk you through what's already set up and how to use it.
 
 ## What's Already Set Up
 

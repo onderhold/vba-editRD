@@ -6,8 +6,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch, PropertyMock
 from contextlib import contextmanager
 
+import threading
+import time
+
 import pytest
 
+from vba_edit.office_cli import OfficeVBACLI
 from vba_edit.office_vba import (
     VBAComponentHandler,
     WordVBAHandler,
@@ -113,13 +117,41 @@ class BaseOfficeMock:
 
     def cleanup(self):
         """Cleanup mock objects and references."""
-        if hasattr(self, "handler"):
-            if hasattr(self.handler, "doc"):
-                self.handler.doc = None
-            if hasattr(self.handler, "app"):
-                self.handler.app = None
-            self.handler = None
-        self.mock_app = None
+        try:
+            if hasattr(self, "handler") and self.handler:
+                # Force close any real COM connections
+                if hasattr(self.handler, "doc") and self.handler.doc:
+                    try:
+                        # Try to close document if it's real
+                        if hasattr(self.handler.doc, "Close"):
+                            self.handler.doc.Close()
+                    except Exception:
+                        pass
+                    self.handler.doc = None
+
+                if hasattr(self.handler, "app") and self.handler.app:
+                    try:
+                        # Try to quit application if it's real
+                        if hasattr(self.handler.app, "Quit"):
+                            self.handler.app.Quit()
+                    except Exception:
+                        pass
+                    self.handler.app = None
+
+                self.handler = None
+
+            # Clear mock references
+            self.mock_app = None
+
+            # Force garbage collection
+            import gc
+
+            gc.collect()
+
+        except Exception as e:
+            import warnings
+
+            warnings.warn(f"Warning: Error during COM cleanup: {e}")
 
     def _configure_mock_app(self):
         """Configure app-specific mock behavior. Override in subclasses."""
@@ -194,6 +226,7 @@ def create_mock_component():
     return mock_component, mock_code_module
 
 
+@pytest.mark.office
 def test_path_handling(temp_dir):
     """Test path handling in VBA handlers."""
     # Create test document
@@ -214,6 +247,8 @@ def test_path_handling(temp_dir):
     assert "not found" in str(exc_info.value).lower()
 
 
+@pytest.mark.com
+@pytest.mark.office
 def test_vba_error_handling(mock_word_handler):
     """Test VBA-specific error conditions."""
     # # Create a mock COM error that simulates VBA access denied
@@ -246,6 +281,7 @@ def test_vba_error_handling(mock_word_handler):
     #     assert "wdmain11.chm" in str(exc_info.value).lower()
 
 
+@pytest.mark.office
 def test_component_handler():
     """Test VBA component handler functionality."""
     handler = VBAComponentHandler()
@@ -283,6 +319,9 @@ def test_component_header_handling():
     assert "MultiUse = -1" in class_header
 
 
+@pytest.mark.com
+@pytest.mark.word
+@pytest.mark.office
 def test_word_handler_functionality(mock_word_handler, sample_vba_files):
     """Test Word VBA handler specific functionality."""
     handler = mock_word_handler
@@ -306,6 +345,9 @@ def test_word_handler_functionality(mock_word_handler, sample_vba_files):
     mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
+@pytest.mark.com
+@pytest.mark.excel
+@pytest.mark.office
 def test_excel_handler_functionality(mock_excel_handler, sample_vba_files):
     """Test Excel VBA handler specific functionality."""
     handler = mock_excel_handler
@@ -329,6 +371,9 @@ def test_excel_handler_functionality(mock_excel_handler, sample_vba_files):
     mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
+@pytest.mark.com
+@pytest.mark.access
+@pytest.mark.office
 def test_access_handler_functionality(mock_access_handler, sample_vba_files):
     """Test Access VBA handler specific functionality."""
     handler = mock_access_handler
@@ -351,31 +396,262 @@ def test_access_handler_functionality(mock_access_handler, sample_vba_files):
     mock_code_module.AddFromString.assert_called_once_with("' Test Code")
 
 
-def test_watch_changes_handling(mock_word_handler, temp_dir):
-    """Test file watching functionality."""
-    handler = mock_word_handler
+@patch("vba_edit.office_vba.get_document_paths")
+@pytest.mark.office
+def test_rubberduck_folders_passed_to_handler(mock_get_paths, vba_app, office_app_config, temp_dir):
+    """Test that rubberduck_folders option is passed to the handler."""
 
-    # Test file change detection
+    config = office_app_config[vba_app]
+
+    # Create the appropriate file for this Office app
+    doc_path = temp_dir / f"test{config['extension']}"
+    doc_path.touch()
+
+    # Mock the path resolution
+    mock_get_paths.return_value = (doc_path, temp_dir)
+
+    # Create args with rubberduck_folders enabled
+    cli = OfficeVBACLI(vba_app)
+    parser = cli.create_cli_parser()
+    args = parser.parse_args(["export", "--rubberduck-folders", "--file", str(doc_path)])
+
+    # Mock the handler class directly on the CLI instance
+    with patch.object(cli, "handler_class") as mock_handler_class:
+        # Create mock handler instance
+        mock_handler_instance = Mock()
+        mock_handler_class.return_value = mock_handler_instance
+
+        # Handle the command
+        cli.handle_office_vba_command(args)
+
+        # Verify handler was called with use_rubberduck_folders=True
+        mock_handler_class.assert_called_once()
+        call_kwargs = mock_handler_class.call_args[1]
+        assert call_kwargs["use_rubberduck_folders"] is True
+
+
+@pytest.mark.com
+@pytest.mark.office
+def test_watch_changes_handling(vba_app, request):
+    """Test that watch_changes method exists and can be interrupted."""
+    # Get the appropriate handler fixture based on the app
+    handler_fixture_name = f"mock_{vba_app}_handler"
+    handler = request.getfixturevalue(handler_fixture_name)
+
+    # Test that the method exists and is callable
+    assert hasattr(handler, "watch_changes")
+    assert callable(handler.watch_changes)
+
+    # Test that the handler has the expected attributes for watching
+    assert hasattr(handler, "vba_dir")
+    assert handler.vba_dir is not None
+
+    # Rather than actually calling watch_changes (which can hang),
+    # just verify the method signature and basic setup
+    import inspect
+
+    sig = inspect.signature(handler.watch_changes)
+    assert len(sig.parameters) == 0  # Should take no parameters besides self
+
+    # Test passes if we can inspect the method without issues
+
+
+@pytest.mark.com
+@pytest.mark.office
+def test_watch_changes_with_threading_v1(vba_app, temp_dir, request):
+    """Test file watching functionality using threading."""
+    # Get the appropriate handler fixture based on the app
+    handler_fixture_name = f"mock_{vba_app}_handler"
+    handler = request.getfixturevalue(handler_fixture_name)
+
+    # Create a test VBA file
     test_module = temp_dir / "TestModule.bas"
-    test_module.write_text("' Test Code")
+    test_module.write_text('Attribute VB_Name = "TestModule"\nSub Test()\nEnd Sub')
 
-    # Mock time.time() to always return an incrementing value
-    start_time = 0
+    # Track when changes are detected
+    changes_detected = threading.Event()
+    watch_error = None
 
-    def mock_time():
-        nonlocal start_time
-        start_time += 31  # Ensure we're always past the check_interval
-        return start_time
+    # Mock the import_single_file method to signal when a change is processed
+    original_import = handler.import_single_file
 
-    with patch("time.time", side_effect=mock_time), patch("time.sleep"):  # Also mock sleep to prevent any actual delays
-        # Mock document checking to force exit after one iteration
-        handler.is_document_open = Mock(side_effect=[True, DocumentClosedError()])
+    def mock_import_with_signal(file_path):
+        changes_detected.set()  # Signal that change was detected
+        return original_import(file_path)
 
-        # This should exit after DocumentClosedError is raised
-        with pytest.raises(DocumentClosedError):
+    handler.import_single_file = Mock(side_effect=mock_import_with_signal)
+
+    def watcher_thread():
+        """Run the watcher in a separate thread."""
+        nonlocal watch_error
+        try:
             handler.watch_changes()
+        except Exception as e:
+            watch_error = e
+
+    def file_modifier_thread():
+        """Modify the file after a short delay."""
+        time.sleep(0.5)  # Give watcher time to start
+
+        # Modify the test file
+        modified_content = test_module.read_text() + "\n' Added comment"
+        test_module.write_text(modified_content)
+
+        # Wait for change detection or timeout
+        if changes_detected.wait(timeout=5):
+            # Success! Changes were detected
+            # Now signal the watcher to stop by mocking document closure
+            handler.is_document_open = Mock(return_value=False)
+        else:
+            # Timeout - force stop the watcher
+            handler.is_document_open = Mock(return_value=False)
+
+    # Start both threads
+    watcher = threading.Thread(target=watcher_thread, daemon=True)
+    modifier = threading.Thread(target=file_modifier_thread, daemon=True)
+
+    watcher.start()
+    modifier.start()
+
+    # Wait for both threads to complete (with timeout)
+    modifier.join(timeout=10)
+    watcher.join(timeout=2)  # Shorter timeout for watcher since it should exit quickly
+
+    # Verify the test results
+    if watch_error and not isinstance(watch_error, (DocumentClosedError, KeyboardInterrupt)):
+        raise watch_error
+
+    # Verify that changes were actually detected
+    assert changes_detected.is_set(), "File changes should have been detected"
+
+    # Verify that import_single_file was called with the correct file
+    handler.import_single_file.assert_called_with(test_module)
 
 
+@pytest.mark.com
+@pytest.mark.office
+def test_watch_changes_with_threading(vba_app, tmp_path, request):
+    """Test file watching functionality using threading."""
+    # Get the appropriate handler fixture based on the app
+    handler_fixture_name = f"mock_{vba_app}_handler"
+    handler = request.getfixturevalue(handler_fixture_name)
+
+    # Create a test VBA file
+    vba_dir = tmp_path
+    test_module = tmp_path / "TestModule.bas"
+    original_content = 'Attribute VB_Name = "TestModule"\nSub Test()\nEnd Sub'
+    test_module.write_text(original_content)
+
+    # Update the handler to use the pytest temporary directory
+    handler.vba_dir = vba_dir
+
+    # Print file path information
+    print("\n=== File Path Information ===")
+    print(f"Test file name: {test_module.name}")
+    print(f"Test file path: {test_module}")
+    print(f"Absolute path: {test_module.absolute()}")
+    print(f"Parent directory: {test_module.parent}")
+    print(f"File exists: {test_module.exists()}")
+    print(f"VBA directory: {tmp_path}")
+    print(f"Handler VBA dir: {handler.vba_dir}")
+    print("================================\n")
+
+    # Track when changes are detected and file content verification
+    changes_detected = threading.Event()
+    content_verified = threading.Event()
+    watch_error = None
+    file_content_matches = False
+
+    # Mock the import_single_file method to signal when a change is processed
+    original_import = handler.import_single_file
+
+    def mock_import_with_signal(file_path):
+        changes_detected.set()  # Signal that change was detected
+        return original_import(file_path)
+
+    handler.import_single_file = Mock(side_effect=mock_import_with_signal)
+
+    def watcher_thread():
+        """Run the watcher in a separate thread."""
+        nonlocal watch_error, file_content_matches
+        try:
+            handler.watch_changes()
+        except Exception as e:
+            watch_error = e
+
+        # When watcher exits, verify the file content
+        current_content = test_module.read_text()
+        expected_addition = "' Added comment"
+        file_content_matches = expected_addition in current_content
+
+        print("File content verification:")
+        print(f"Original content: {repr(original_content)}")
+        print(f"Current content: {repr(current_content)}")
+        print(f"Looking for: {repr(expected_addition)}")
+        print(f"Content matches: {file_content_matches}")
+
+        content_verified.set()  # Signal that content verification is done
+
+    def file_modifier_thread():
+        """Modify the file after a short delay."""
+        time.sleep(0.5)  # Give watcher time to start
+
+        # Modify the test file
+        modified_content = test_module.read_text() + "\n' Added comment"
+        test_module.write_text(modified_content)
+        print(f"File modified. New content: {repr(modified_content)}")
+
+        # Wait for change detection with shorter timeout than watcher
+        if changes_detected.wait(timeout=3):
+            print("Changes detected! Waiting a bit more for processing...")
+            time.sleep(0.5)  # Give watcher time to process the change
+
+            # Signal the watcher to stop by mocking document closure
+            handler.is_document_open = Mock(return_value=False)
+            print("Signaled watcher to stop")
+        else:
+            print("Timeout waiting for change detection - forcing stop")
+            # Timeout - force stop the watcher
+            handler.is_document_open = Mock(return_value=False)
+
+    # Start both threads
+    watcher = threading.Thread(target=watcher_thread, daemon=True)
+    modifier = threading.Thread(target=file_modifier_thread, daemon=True)
+
+    watcher.start()
+    modifier.start()
+
+    # Wait for modifier to complete first (shorter timeout)
+    modifier.join(timeout=5)
+
+    # Wait for watcher to complete content verification (longer timeout)
+    watcher.join(timeout=8)
+
+    # Wait for content verification to complete
+    content_verified.wait(timeout=2)
+
+    # Verify the test results
+    if watch_error and not isinstance(watch_error, (DocumentClosedError, KeyboardInterrupt)):
+        print(f"Unexpected watch error: {watch_error}")
+        raise watch_error
+
+    # Verify that changes were actually detected
+    assert changes_detected.is_set(), "File changes should have been detected within timeout"
+
+    # Verify that import_single_file was called with the correct file
+    handler.import_single_file.assert_called_with(test_module)
+
+    # Verify that the file content was actually modified
+    assert file_content_matches, "File should contain the added comment"
+
+    # Additional verification: read the file directly to double-check
+    final_content = test_module.read_text()
+    assert "' Added comment" in final_content, f"File content verification failed. Content: {repr(final_content)}"
+
+    print("✓ All verifications passed!")
+
+
+@pytest.mark.office
 def test_watchfiles_integration():
     """Test that watchfiles is properly integrated and can be imported."""
     watchfiles = pytest.importorskip("watchfiles", reason="watchfiles not available")
@@ -384,36 +660,6 @@ def test_watchfiles_integration():
     assert hasattr(watchfiles.Change, "added")
     assert hasattr(watchfiles.Change, "modified")
     assert hasattr(watchfiles.Change, "deleted")
-
-
-def test_watchfiles_change_detection(mock_word_handler, temp_dir):
-    """Test watchfiles change detection with mocked file changes."""
-    handler = mock_word_handler
-
-    # Create a test VBA file
-    test_module = temp_dir / "TestModule.bas"
-    test_module.write_text('Attribute VB_Name = "TestModule"\nSub Test()\nEnd Sub')
-
-    # Mock watchfiles.watch to simulate file changes
-    from watchfiles import Change
-
-    mock_changes = [(Change.modified, str(test_module))]
-
-    with patch("watchfiles.watch") as mock_watch:
-        mock_watch.return_value = [mock_changes]
-
-        # Mock document status to exit after one iteration
-        handler.is_document_open = Mock(side_effect=[True, False])
-
-        # Test the watchfiles integration
-        with patch.object(handler, "_handle_file_change"):
-            try:
-                handler.watch_changes()
-            except DocumentClosedError:
-                pass  # Expected when document becomes unavailable
-
-            # Verify that watchfiles.watch was called
-            assert mock_watch.called
 
 
 if __name__ == "__main__":

@@ -189,6 +189,8 @@ class OfficeVBACLI:
         parser.add_argument(
             "--version", action="version", version=f"{package_name_formatted} v{package_version} ({entry_point_name})"
         )
+
+        # Add only basic common arguments to main parser (not rubberduck-folders)
         add_common_arguments(parser)
 
         subparsers = parser.add_subparsers(dest="command", required=True)
@@ -212,9 +214,8 @@ class OfficeVBACLI:
         add_header_arguments(export_parser)
         add_metadata_arguments(export_parser)
 
-        # Check command
-        check_parser = subparsers.add_parser("check", help=get_help_string("check", self.office_app))
-        add_common_arguments(check_parser)
+        # Check command - no arguments needed
+        subparsers.add_parser("check", help=get_help_string("check", self.office_app))
 
         # Add office-specific arguments
         extra_args_func = self._get_special_function("extra_arguments")
