@@ -50,7 +50,6 @@ all = [
     "xlwings>=0.28.0"
 ]
 
-# Fügen Sie diese Sektion hinzu:
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -133,6 +132,9 @@ ignore_missing_imports = true
 minversion = "7.0"
 addopts = "-ra -q --strict-markers --strict-config"
 testpaths = ["tests"]
+# Exclude the cli subdirectory from test discovery
+# Tests will only be discovered through test_cli.py imports
+norecursedirs = ["tests/cli"]
 filterwarnings = [
     "error",
     "ignore::UserWarning",
