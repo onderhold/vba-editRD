@@ -1,10 +1,17 @@
 ## Possible Additional Features and Improvements
 
-1. _Startup logic_: Check if the document is already open in another instance of the application.
+- When in edit mode, watch the Office document separately as well. I it gets changed, pause the watcher on the exported files, and diff the VBA code in the Office file with the exported files.
+When the code in the Office file differs, export it, overwriting existing ones,
 
-2. Using the Office applications in _invisible/silent mode_ (currently, the application window is always shown) for certain commands. Will most probably require the definition of various exit codes as well.
+    **or, if this gets to difficult** (e.g. we would to have to check on new and deleted modules in the Office file, and on changed attributes): --> stop edit mode (safe mode)
 
-3. **implemented:** Add CLI option to use a _config file_ (e.g. `excel-vba.toml`).
+- --mixed-headers: with --in-file-headers, still use --save-headers logic for user forms. When in edit mode, track changes to header files, append the code files to them and do a reimport.
+
+- _Startup logic_: Check if the document is already open in another instance of the application.
+
+- Using the Office applications in _invisible/silent mode_ (currently, the application window is always shown) for certain commands. Will most probably require the definition of various exit codes as well.
+
+- **implemented:** Add CLI option to use a _config file_ (e.g. `excel-vba.toml`).
    - The config file can be specified via a command-line option (e.g. `--conf path/to/config.toml`).
    - There's no provision for a default config file, if one shall be used, it always has to be specified explicitly.
    - The config file can contain options such as the input and output file paths, the Office application to use, and any additional command-line arguments.
@@ -12,11 +19,11 @@
    - The config file will support sections for different settings, such as `general`, `word`, `excel`, etc.
    - Command-line arguments will override config file settings.
 
-4. _export/import/edit PowerQuery M Code_ for Excel files, maybe by a dedicated _**excel-pq**_ module
+- _export/import/edit PowerQuery M Code_ for Excel files, maybe by a dedicated _**excel-pq**_ module
 
-5. **implemented:** _replace watchgod_ with newer library `watchfiles`
+- **implemented:** _replace watchgod_ with newer library `watchfiles`
 
-6. _Restructuring the option handling_, which will go together with restructuring/tagging of test modules:
+- _Restructuring the option handling_, which will go together with restructuring/tagging of test modules:
    - Some options apply to all commands: check, all 'file manipulation' commands
       - --help, --verbose, --logfile
    - Some options apply to all the 'file manipulation' commands: import, export, edit
@@ -29,7 +36,7 @@
    - Some options apply to certain executables only
       - excel-vba: --xlwings, --pq-directory
 
-7. _User manual_ in addition to the --help option
+- _User manual_ in addition to the --help option
 
 
 ##
