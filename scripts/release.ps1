@@ -1,7 +1,7 @@
 # scripts/release.ps1
 param(
-    [string]$Version = "v0.4.0a2",
-    [string]$NotesFile = "docs/releases/v0.4.0a2-release-notes.md",
+    [string]$Version = "v0.4.1a1",
+    [string]$NotesFile = "docs/releases/v0.4.1a1-release-notes.md",
     [string]$Repo = "onderhold/vba-editRD"
 )
 
