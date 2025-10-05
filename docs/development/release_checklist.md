@@ -8,12 +8,12 @@
 - [ ] Run full test suite: `pytest tests/ -v --cov-report=html`
 
 ## Build Release
-- [ ] Run `python build_release.py --create-tag` (builds AND creates tag)
+- [ ] Run `python build_release.py` (builds without creating tag)
 - [ ] Test all executables: `excel-vba.exe --version`, etc.
 - [ ] Test basic functionality of each executable
 
 ## Release (Automated)
-- [ ] Tag created automatically: `python build_release.py --tag-only` (if not done above)
+- [ ] Create tag: `python build_release.py --tag-only`
 - [ ] Push tag: Prompted during tag creation
 - [ ] Create GitHub release with executables: scripts/release.ps1
 - [ ] Update documentation if needed
