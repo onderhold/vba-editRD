@@ -70,6 +70,9 @@ pytest --cov=src --cov-report=html
 # Run only fast tests (exclude slow ones)
 pytest -m "not slow"
 
+# Run tests with VBA trust access check
+pytest --check-vba-trust
+
 # Test only Excel
 pytest tests/test_cli.py --apps excel -v
 

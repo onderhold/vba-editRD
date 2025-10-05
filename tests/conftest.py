@@ -137,7 +137,7 @@ def _check_vba_trust_access(config):
 
         print("\n⚙️  TESTING OPTIONS:")
         print("   • Skip VBA tests:     pytest -m 'not com'")
-        print("   • Skip this check:    pytest --skip-vba-check")
+        print("   • Skip this check:    don't use --check-vba-trust")
 
         # Show specific command to skip only the problematic apps
         working_apps = [app for app in selected_apps if app not in failed_apps]
