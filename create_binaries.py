@@ -63,10 +63,10 @@ def build_executable(app_name: str, config: dict, src_dir: str, additional_args:
 
     try:
         run(args)
-        print(f"✓ Successfully built {exe_name}.exe")
+        print(f"[OK] Successfully built {exe_name}.exe")
         return True
     except Exception as e:
-        print(f"✗ Failed to build {exe_name}.exe: {e}")
+        print(f"[FAIL] Failed to build {exe_name}.exe: {e}")
         return False
 
 
@@ -156,9 +156,9 @@ Examples:
     print("=" * 50)
     print("Build Summary:")
     if successful_builds:
-        print(f"✓ Successfully built: {', '.join(successful_builds)}")
+        print(f"[OK] Successfully built: {', '.join(successful_builds)}")
     if failed_builds:
-        print(f"✗ Failed to build: {', '.join(failed_builds)}")
+        print(f"[FAIL] Failed to build: {', '.join(failed_builds)}")
         sys.exit(1)
 
     print("All requested executables built successfully!")

@@ -187,6 +187,20 @@ def create_git_tag():
     return tag_name
 
 
+def check_pyinstaller():
+    """Check if PyInstaller is installed."""
+    print("\n🔍 Checking PyInstaller availability...")
+    try:
+        import PyInstaller
+
+        print(f"   ✅ PyInstaller found: {PyInstaller.__version__}")
+    except ImportError:
+        print("   ❌ PyInstaller not installed!")
+        print("   Install with: pip install pyinstaller")
+        print("   Or install all dev dependencies: pip install -e .[dev]")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build vba-edit executables with all prerequisites")
     parser.add_argument("--apps", nargs="*", help="Specific apps to build (default: all)")
@@ -219,7 +233,7 @@ def main():
     if not args.skip_install:
         print("\n🔄 Reinstalling package...")
         run_command(["pip", "uninstall", "vba_edit", "vba-edit", "-y"], "Uninstalling old package", check=False)
-        run_command(["pip", "install", "-e", "."], "Installing package in development mode")
+        run_command(["pip", "install", "-e", ".[dev]"], "Installing package in development mode")
 
     # Step 3: Verify installation
     print("\n🔍 Verifying installation...")
@@ -229,15 +243,18 @@ def main():
     installed_version = result.stdout.strip()
     print(f"   ✅ Installed version: {installed_version}")
 
-    # Step 4: Build executables
+    # Step 4: Check PyInstaller availability
+    check_pyinstaller()
+
+    # Step 5: Build executables
     print("\n🔨 Building executables...")
-    build_args = ["python", "create_binaries.py"]
+    build_args = [sys.executable, "create_binaries.py"]
     if args.apps:
         build_args.extend(["--apps"] + args.apps)
 
     run_command(build_args, "Building executables")
 
-    # Step 5: Test executables
+    # Step 6: Test executables
     print("\n🧪 Testing executables...")
     dist_path = Path("dist")
     if dist_path.exists():
@@ -246,7 +263,7 @@ def main():
 
     print("\n🎉 Build process completed successfully!")
 
-    # Step 6: Optionally create tag
+    # Step 7: Optionally create tag
     if args.create_tag:
         create_git_tag()
 
