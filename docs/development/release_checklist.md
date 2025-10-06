@@ -15,7 +15,7 @@
 ## Release (Automated)
 - [ ] Create tag: `python build_release.py --tag-only`
 - [ ] Push tag: Prompted during tag creation
-- [ ] Create GitHub release with executables: scripts/release.ps1
+- [ ] Create GitHub release with executables: `.\scripts\release.ps1`
 - [ ] Update documentation if needed
 
 ## Manual Git Commands (Alternative)

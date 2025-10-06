@@ -1,8 +1,53 @@
 # scripts/release.ps1
+<# 
+# Normal usage - will prompt if release exists
+.\scripts\release.ps1
+
+# Force recreate without prompting
+.\scripts\release.ps1 -Force
+
+# Use with custom notes file
+.\scripts\release.ps1 -NotesFile "docs/releases/custom.md"
+
+# Force recreate with custom notes
+.\scripts\release.ps1 -Force -NotesFile "docs/releases/custom.md"
+#>
+
 param(
     [string]$NotesFile = "",
-    [string]$Repo = "onderhold/vba-editRD"
+    [string]$Repo = "onderhold/vba-editRD",
+    [string]$RequiredUser = "onderhold",  # Set your required GitHub username
+    [switch]$Force  # Force recreate release if it exists
 )
+
+# Verify GitHub authentication and user
+Write-Host "Checking GitHub authentication..." -ForegroundColor Yellow
+try {
+    $currentUser = gh api user --jq '.login' 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error: Not authenticated with GitHub CLI!" -ForegroundColor Red
+        Write-Host "Please run: gh auth login" -ForegroundColor Yellow
+        exit 1
+    }
+    
+    Write-Host "Currently authenticated as: $currentUser" -ForegroundColor Cyan
+    
+    if ($currentUser -ne $RequiredUser) {
+        Write-Host "Error: Wrong GitHub user!" -ForegroundColor Red
+        Write-Host "  Expected: $RequiredUser" -ForegroundColor Yellow
+        Write-Host "  Current:  $currentUser" -ForegroundColor Yellow
+        Write-Host "" 
+        Write-Host "Please authenticate with the correct account:" -ForegroundColor Yellow
+        Write-Host "  gh auth logout" -ForegroundColor Gray
+        Write-Host "  gh auth login" -ForegroundColor Gray
+        exit 1
+    }
+    
+    Write-Host "✓ Authenticated as correct user: $RequiredUser" -ForegroundColor Green
+} catch {
+    Write-Host "Error checking GitHub authentication: $_" -ForegroundColor Red
+    exit 1
+}
 
 # Read version from pyproject.toml
 Write-Host "Reading version from pyproject.toml..." -ForegroundColor Yellow
@@ -21,6 +66,62 @@ if ($pyprojectContent -match 'version\s*=\s*"([^"]+)"') {
 # Set default notes file if not provided
 if ([string]::IsNullOrEmpty($NotesFile)) {
     $NotesFile = "docs/releases/$Version-release-notes.md"
+}
+
+# Check if release already exists
+Write-Host "Checking if release $Version already exists..." -ForegroundColor Yellow
+$releaseExists = $false
+gh release view $Version --repo $Repo 2>&1 | Out-Null
+if ($LASTEXITCODE -eq 0) {
+    $releaseExists = $true
+    Write-Host "⚠️  Release $Version already exists!" -ForegroundColor Yellow
+    
+    if ($Force) {
+        Write-Host "Force flag detected. Deleting existing release..." -ForegroundColor Yellow
+        gh release delete $Version --repo $Repo --yes
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Existing release deleted successfully" -ForegroundColor Green
+            $releaseExists = $false
+        } else {
+            Write-Host "Error: Failed to delete existing release!" -ForegroundColor Red
+            exit 1
+        }
+    } else {
+        Write-Host ""
+        Write-Host "Options:" -ForegroundColor Cyan
+        Write-Host "  1. Delete and recreate the release" -ForegroundColor White
+        Write-Host "  2. Upload files to existing release" -ForegroundColor White
+        Write-Host "  3. Cancel" -ForegroundColor White
+        Write-Host ""
+        $choice = Read-Host "Enter your choice (1-3)"
+        
+        switch ($choice) {
+            "1" {
+                Write-Host "Deleting existing release..." -ForegroundColor Yellow
+                gh release delete $Version --repo $Repo --yes
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Existing release deleted successfully" -ForegroundColor Green
+                    $releaseExists = $false
+                } else {
+                    Write-Host "Error: Failed to delete existing release!" -ForegroundColor Red
+                    exit 1
+                }
+            }
+            "2" {
+                Write-Host "Will upload files to existing release..." -ForegroundColor Cyan
+            }
+            "3" {
+                Write-Host "Operation cancelled by user." -ForegroundColor Gray
+                exit 0
+            }
+            default {
+                Write-Host "Invalid choice. Exiting." -ForegroundColor Red
+                exit 1
+            }
+        }
+    }
+} else {
+    Write-Host "✓ Release $Version does not exist yet" -ForegroundColor Green
 }
 
 # Clean old dev builds from dist folder
@@ -45,28 +146,35 @@ if (Test-Path $distPath) {
 
 Write-Host "Creating release $Version for repository $Repo..." -ForegroundColor Green
 
-# Create the release
-gh release create $Version `
+# Create the release if it doesn't exist
+if (-not $releaseExists) {
+    Write-Host "Creating release $Version for repository $Repo..." -ForegroundColor Green
+    
+    gh release create $Version `
+      --repo $Repo `
+      --title "VBA Edit $Version" `
+      --notes-file $NotesFile `
+      --prerelease
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error creating release!" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Release created successfully!" -ForegroundColor Green
+}
+
+# Upload files - only for the specific version
+Write-Host "Uploading files for version $VersionNumber..." -ForegroundColor Yellow
+gh release upload $Version `
   --repo $Repo `
-  --title "VBA Edit $Version" `
-  --notes-file $NotesFile `
-  --prerelease
+  --clobber `
+  dist/*-vba.exe dist/vba_edit-$VersionNumber*.whl dist/vba_edit-$VersionNumber*.tar.gz
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "Release created successfully!" -ForegroundColor Green
-    
-    # Upload files - only for the specific version
-    Write-Host "Uploading files for version $VersionNumber..." -ForegroundColor Yellow
-    gh release upload $Version `
-      --repo $Repo `
-      dist/*-vba.exe dist/vba_edit-$VersionNumber*.whl dist/vba_edit-$VersionNumber*.tar.gz
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "All files uploaded successfully!" -ForegroundColor Green
-        Write-Host "View your release at: https://github.com/$Repo/releases/tag/$Version" -ForegroundColor Cyan
-    } else {
-        Write-Host "Error uploading files!" -ForegroundColor Red
-    }
+    Write-Host "All files uploaded successfully!" -ForegroundColor Green
+    Write-Host "View your release at: https://github.com/$Repo/releases/tag/$Version" -ForegroundColor Cyan
 } else {
-    Write-Host "Error creating release!" -ForegroundColor Red
+    Write-Host "Error uploading files!" -ForegroundColor Red
+    exit 1
 }
