@@ -1,0 +1,5 @@
+[console_scripts]
+access-vba = vba_edit.access_vba:main
+excel-vba = vba_edit.excel_vba:main
+powerpoint-vba = vba_edit.powerpoint_vba:main
+word-vba = vba_edit.word_vba:main

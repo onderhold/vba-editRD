@@ -1,0 +1,21 @@
+chardet
+watchfiles
+
+[:platform_system == "Windows"]
+pywin32>=224
+
+[:python_version < "3.11"]
+tomli>=2.0.0
+
+[all]
+xlwings>=0.28.0
+
+[dev]
+black
+bumpver
+ruff
+pytest
+pytest-cov>=4.0.0
+twine
+wheel
+pyinstaller

@@ -1,0 +1,18 @@
+chardet
+watchgod
+
+[:platform_system == "Windows"]
+pywin32>=224
+
+[all]
+xlwings>=0.28.0
+
+[dev]
+black
+bumpver
+ruff
+pytest
+pytest-cov>=4.0.0
+twine
+wheel
+pyinstaller

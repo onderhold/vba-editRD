@@ -1,0 +1,14 @@
+# Secrets and credentials
+*.token
+*.key
+.env
+secrets/
+
+# Local test data
+test-data/
+*.test.xlsx
+*.test.docx
+
+# Temporary files
+temp/
+*.tmp
