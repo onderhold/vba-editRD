@@ -13,9 +13,14 @@
                 "echo": true,
                 "reveal": "always",
                 "focus": true,
-                "panel": "shared",
+                "panel": "dedicated",
                 "showReuseMessage": false,
-                "clear": false
+                "clear": true
+            },
+            "options": {
+                "env": {
+                    "VIRTUAL_ENV": ""
+                }
             }
         }
     ],
