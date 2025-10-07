@@ -24,32 +24,35 @@ if ([System.IO.Path]::IsPathRooted($PathToMove)) {
 # Normalize path separators
 $PathToMove = $PathToMove -replace '/', '\'
 
-$SourcePath = Join-Path $RepoRoot $PathToMove
 $DevPersonalRoot = Join-Path $RepoRoot ".dev-personal"
 
 Write-Host "`n=== Moving to dev-personal ===" -ForegroundColor Cyan
 Write-Host "Repository root: $RepoRoot" -ForegroundColor Gray
 
-# Validate source exists
-if (-not (Test-Path $SourcePath)) {
-    Write-Host "`nError: Source path does not exist: $SourcePath" -ForegroundColor Red
+# Resolve wildcards - get matching items
+$SearchPath = Join-Path $RepoRoot $PathToMove
+$MatchingItems = Get-ChildItem -Path $SearchPath -ErrorAction SilentlyContinue
+
+if (-not $MatchingItems) {
+    Write-Host "`nError: No files or directories match: $PathToMove" -ForegroundColor Red
     exit 1
 }
 
-# Validate source is not in .dev-personal already
-if ($SourcePath -like "$DevPersonalRoot*") {
-    Write-Host "`nError: Source is already in .dev-personal!" -ForegroundColor Red
+# Filter out items already in .dev-personal
+$ItemsToMove = $MatchingItems | Where-Object { $_.FullName -notlike "$DevPersonalRoot*" }
+
+if (-not $ItemsToMove) {
+    Write-Host "`nError: All matching items are already in .dev-personal!" -ForegroundColor Red
     exit 1
 }
 
-# Determine if it's a file or directory
-$IsDirectory = Test-Path $SourcePath -PathType Container
-$TargetPath = Join-Path $DevPersonalRoot $PathToMove
-
-Write-Host "`nMoving: $PathToMove" -ForegroundColor Yellow
-Write-Host "  From: $SourcePath" -ForegroundColor Gray
-Write-Host "  To:   $TargetPath" -ForegroundColor Gray
-Write-Host "  Type: $(if ($IsDirectory) { 'Directory' } else { 'File' })" -ForegroundColor Gray
+# Show what will be moved
+Write-Host "`nFound $($ItemsToMove.Count) item(s) to move:" -ForegroundColor Yellow
+foreach ($item in $ItemsToMove) {
+    $relativePath = $item.FullName.Substring($RepoRoot.Length + 1)
+    $itemType = if ($item.PSIsContainer) { "Directory" } else { "File" }
+    Write-Host "  - $relativePath [$itemType]" -ForegroundColor Gray
+}
 
 # Confirm
 $confirm = Read-Host "`nProceed with move? (y/N)"
@@ -58,24 +61,48 @@ if ($confirm -ne "y") {
     exit 0
 }
 
-# Create parent directory in .dev-personal if needed
-$TargetParent = Split-Path $TargetPath -Parent
-if (-not (Test-Path $TargetParent)) {
-    Write-Host "`nCreating directory: $TargetParent" -ForegroundColor Gray
-    New-Item -ItemType Directory -Path $TargetParent -Force | Out-Null
+# Process each item
+$MovedPaths = @()
+$FailedItems = @()
+
+Write-Host "`nCopying to .dev-personal..." -ForegroundColor Yellow
+foreach ($item in $ItemsToMove) {
+    $relativePath = $item.FullName.Substring($RepoRoot.Length + 1)
+    $targetPath = Join-Path $DevPersonalRoot $relativePath
+    
+    try {
+        # Create parent directory if needed
+        $targetParent = Split-Path $targetPath -Parent
+        if (-not (Test-Path $targetParent)) {
+            New-Item -ItemType Directory -Path $targetParent -Force | Out-Null
+        }
+        
+        # Copy the item
+        if ($item.PSIsContainer) {
+            Copy-Item -Recurse -Path $item.FullName -Destination $targetPath -Force
+        } else {
+            Copy-Item -Path $item.FullName -Destination $targetPath -Force
+        }
+        
+        Write-Host "  ✓ Copied: $relativePath" -ForegroundColor Green
+        $MovedPaths += $relativePath
+    } catch {
+        Write-Host "  ✗ Failed: $relativePath - $_" -ForegroundColor Red
+        $FailedItems += $relativePath
+    }
 }
 
-# Copy to dev-personal
-Write-Host "`nCopying to .dev-personal..." -ForegroundColor Yellow
-try {
-    if ($IsDirectory) {
-        Copy-Item -Recurse -Path $SourcePath -Destination $TargetPath -Force
-    } else {
-        Copy-Item -Path $SourcePath -Destination $TargetPath -Force
+if ($FailedItems.Count -gt 0) {
+    Write-Host "`nWarning: $($FailedItems.Count) item(s) failed to copy" -ForegroundColor Yellow
+    $continue = Read-Host "Continue with remaining items? (y/N)"
+    if ($continue -ne "y") {
+        Write-Host "Aborted." -ForegroundColor Gray
+        exit 1
     }
-    Write-Host "✓ Copied successfully" -ForegroundColor Green
-} catch {
-    Write-Host "Error copying: $_" -ForegroundColor Red
+}
+
+if ($MovedPaths.Count -eq 0) {
+    Write-Host "`nError: No items were successfully copied" -ForegroundColor Red
     exit 1
 }
 
@@ -83,10 +110,18 @@ try {
 Write-Host "`nCommitting to dev-personal branch..." -ForegroundColor Yellow
 Push-Location $DevPersonalRoot
 try {
-    git add $PathToMove
-    if ($LASTEXITCODE -ne 0) { throw "git add failed" }
+    foreach ($path in $MovedPaths) {
+        git add $path
+        if ($LASTEXITCODE -ne 0) { throw "git add failed for $path" }
+    }
     
-    git commit -m "Add $PathToMove from main"
+    $commitMessage = if ($MovedPaths.Count -eq 1) {
+        "Add $($MovedPaths[0]) from main"
+    } else {
+        "Add $($MovedPaths.Count) items from main: $($MovedPaths -join ', ')"
+    }
+    
+    git commit -m $commitMessage
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✓ Committed to dev-personal branch" -ForegroundColor Green
         
@@ -114,10 +149,18 @@ Pop-Location
 Write-Host "`nRemoving from main branch..." -ForegroundColor Yellow
 Push-Location $RepoRoot
 try {
-    git rm -rf $PathToMove
-    if ($LASTEXITCODE -ne 0) { throw "git rm failed" }
+    foreach ($path in $MovedPaths) {
+        git rm -rf $path
+        if ($LASTEXITCODE -ne 0) { throw "git rm failed for $path" }
+    }
     
-    git commit -m "Remove $PathToMove (moved to dev-personal)"
+    $commitMessage = if ($MovedPaths.Count -eq 1) {
+        "Remove $($MovedPaths[0]) (moved to dev-personal)"
+    } else {
+        "Remove $($MovedPaths.Count) items (moved to dev-personal): $($MovedPaths -join ', ')"
+    }
+    
+    git commit -m $commitMessage
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✓ Removed from main branch" -ForegroundColor Green
         
@@ -142,5 +185,8 @@ try {
 Pop-Location
 
 Write-Host "`n✓ Move complete!" -ForegroundColor Green
-Write-Host "The $(if ($IsDirectory) { 'directory' } else { 'file' }) is now in .dev-personal\$PathToMove" -ForegroundColor Cyan
-Write-Host "`nYou can access it at: .\.dev-personal\$PathToMove" -ForegroundColor Gray
+Write-Host "Moved $($MovedPaths.Count) item(s) to .dev-personal:" -ForegroundColor Cyan
+foreach ($path in $MovedPaths) {
+    Write-Host "  - $path" -ForegroundColor Gray
+}
+Write-Host "`nAccess them at: .\.dev-personal\" -ForegroundColor Gray
