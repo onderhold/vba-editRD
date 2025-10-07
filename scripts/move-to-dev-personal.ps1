@@ -54,6 +54,16 @@ foreach ($item in $ItemsToMove) {
     Write-Host "  - $relativePath [$itemType]" -ForegroundColor Gray
 }
 
+# Flush any pending input (like venv activation commands)
+if ($Host.UI.RawUI.KeyAvailable) {
+    while ($Host.UI.RawUI.KeyAvailable) {
+        $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
+    }
+}
+
+# Small delay to let any background processes finish
+Start-Sleep -Milliseconds 500
+
 # Confirm
 $confirm = Read-Host "`nProceed with move? (y/N)"
 if ($confirm -ne "y") {
