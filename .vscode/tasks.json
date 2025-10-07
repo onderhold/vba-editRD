@@ -4,12 +4,8 @@
         {
             "label": "Move to dev-personal",
             "type": "shell",
-            "command": "powershell",
+            "command": "${workspaceFolder}/.dev-personal/scripts/move-to-dev-personal.ps1",
             "args": [
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "${workspaceFolder}/.dev-personal/scripts/move-to-dev-personal.ps1",
                 "${input:pathToMove}"
             ],
             "problemMatcher": [],
