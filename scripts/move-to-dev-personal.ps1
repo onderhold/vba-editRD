@@ -194,9 +194,11 @@ try {
 }
 Pop-Location
 
-Write-Host "`n✓ Move complete!" -ForegroundColor Green
-Write-Host "Moved $($MovedPaths.Count) item(s) to .dev-personal:" -ForegroundColor Cyan
+Write-Host "`n=== Move Complete ===" -ForegroundColor Green
+Write-Host "Successfully moved $($MovedPaths.Count) item(s) to .dev-personal:" -ForegroundColor Cyan
 foreach ($path in $MovedPaths) {
     Write-Host "  - $path" -ForegroundColor Gray
 }
 Write-Host "`nAccess them at: .\.dev-personal\" -ForegroundColor Gray
+Write-Host "`n✓ Task completed successfully. Press any key or close this terminal." -ForegroundColor Green
+Write-Host "==========================================`n" -ForegroundColor Green
